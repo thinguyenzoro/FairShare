@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>FairShare</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
+</head>
+<body>
+<div class="theme-toggle-row">
+  <button id="langToggle" type="button" class="lang-toggle">VI</button>
+  <label class="theme-switch">
+    <input type="checkbox" id="themeToggle">
+    <span class="slider"></span>
+  </label>
+</div>
+<div class="landing">
+  <h1 data-i18n="appTitle">FairShare</h1>
+  <p class="subtitle" data-i18n="tagline">The simplest way to split group expenses</p>
+  <form id="goForm" class="landing-form">
+    <span class="prefix" data-i18n="urlPrefix">fairshare/</span>
+    <input id="slugInput" type="text" data-i18n-placeholder="slugPlaceholder" placeholder="your-group-name" autocomplete="off" autofocus>
+    <button type="submit" data-i18n="goButton">Go</button>
+  </form>
+  <p class="hint" data-i18n="landingHint">No login required. Type any room name and share the link with your group.</p>
+</div>
+
+<footer class="donate-footer">
+  <p data-i18n="donateHeading">Buy the author a coffee</p>
+  <img src="{{ url_for('static', filename='qr-placeholder.jpg') }}" alt="Donate QR code" class="donate-qr">
+  <p class="hint" data-i18n="donateHint">Scan the QR code to donate — thank you for the support!</p>
+</footer>
+
+<script>
+  const form = document.getElementById('goForm');
+  const input = document.getElementById('slugInput');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const slug = input.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_]/g, '');
+    if (slug) window.location.href = '/' + slug;
+  });
+</script>
+
+<button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
+</body>
+</html>
+

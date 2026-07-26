@@ -1,0 +1,2247 @@
+HUONG DAN TAI TAO PROJECT TU FILE NAY
+=======================================
+
+Day la toan bo source code (dang text) cua 1 app Flask "chia tien nhom"
+(giong Splitwise, don gian hoa). Hay tao lai dung cau truc thu muc va noi
+dung file nhu duoi day.
+
+CACH DOC FILE NAY:
+- Moi file bat dau bang dong: @@@@@ FILE: <duong dan> @@@@@
+- Va ket thuc bang dong: @@@@@ END FILE @@@@@
+- Noi dung nam giua 2 dong do chinh la noi dung day du can ghi vao file
+  tai <duong dan> (duong dan la tuong doi tu thu muc goc cua project).
+- Hay tao tung file dung y nhu vay, giu nguyen thu muc con (templates/, static/).
+
+SAU KHI TAO XONG CAC FILE, CAN THEM 2 THU KHONG CO TRONG FILE NAY:
+
+1. Mot file font Unicode (de PDF xuat ra co dau tieng Viet dung):
+   - Tao thu muc static/fonts/
+   - Copy 1 file font TTF ho tro tieng Viet vao do, dat ten la segoeui.ttf
+     Tren Windows: copy tu C:\Windows\Fonts\segoeui.ttf (co san moi may Windows)
+     Tren Mac/Linux: dung font Unicode khac co san (vi du DejaVuSans.ttf, Noto Sans)
+     roi doi ten thanh segoeui.ttf, hoac sua duong dan FONT_PATH trong pdf_export.py
+   - Neu bo qua buoc nay, app van chay binh thuong, chi loi xuat PDF (do thieu font).
+
+2. Thu muc data/ KHONG can tao - app se tu tao file data/app.db va
+   data/secret_key.txt khi chay lan dau tien. Khong co du lieu cu (cac phong
+   da tao truoc) vi day la du lieu (SQLite binary), khong dua vao file text
+   duoc. Neu can giu du lieu cu thi phai chuyen file data/app.db bang cach khac
+   (USB, email, etc.) - khong the copy qua dang text.
+
+SAU KHI CO DU FILE, CHAY BANG 1 TRONG 2 CACH:
+
+Cach 1 - Docker (khuyen nghi, khong can cai Python):
+  docker compose up --build
+  Mo http://localhost:8000/
+
+Cach 2 - Python truc tiep:
+  python -m venv .venv
+  .venv\Scripts\pip install -r requirements.txt      (Windows)
+  .venv\Scripts\python.exe app.py
+  (Mac/Linux: .venv/bin/pip install -r requirements.txt && .venv/bin/python app.py)
+  Mo http://localhost:8000/
+
+=======================================
+NOI DUNG CAC FILE:
+=======================================
+
+@@@@@ FILE: app.py @@@@@
+import os
+import re
+import secrets
+
+from flask import Flask, Response, jsonify, render_template, request, session
+from werkzeug.security import check_password_hash, generate_password_hash
+
+import db
+import pdf_export
+import split_logic
+
+app = Flask(__name__)
+
+SLUG_RE = re.compile(r"^[a-zA-Z0-9\-_]{1,64}$")
+PIN_RE = re.compile(r"^\d{4,6}$")
+
+SECRET_KEY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "secret_key.txt")
+
+
+def _load_secret_key():
+    os.makedirs(os.path.dirname(SECRET_KEY_PATH), exist_ok=True)
+    if not os.path.exists(SECRET_KEY_PATH):
+        with open(SECRET_KEY_PATH, "w") as f:
+            f.write(secrets.token_hex(32))
+    with open(SECRET_KEY_PATH) as f:
+        return f.read().strip()
+
+
+app.secret_key = _load_secret_key()
+
+
+@app.before_request
+def _ensure_db():
+    db.init_db()
+
+
+@app.after_request
+def _no_index(response):
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
+def _valid_slug(slug):
+    return bool(SLUG_RE.match(slug))
+
+
+def _has_access(room):
+    if not room["pin_hash"]:
+        return True
+    return room["id"] in session.get("unlocked_rooms", [])
+
+
+def _grant_access(room_id):
+    unlocked = session.get("unlocked_rooms", [])
+    if room_id not in unlocked:
+        unlocked.append(room_id)
+    session["unlocked_rooms"] = unlocked
+
+
+@app.get("/")
+def index():
+    return render_template("index.html")
+
+
+@app.get("/robots.txt")
+def robots():
+    return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
+
+
+@app.post("/api/feedback")
+def api_feedback():
+    data = request.get_json(force=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "MESSAGE_REQUIRED"}), 400
+
+    room_slug = data.get("room_slug")
+    if room_slug and not _valid_slug(room_slug):
+        room_slug = None
+
+    db.add_feedback(room_slug, message[:2000])
+    return jsonify({"ok": True})
+
+
+@app.get("/<room_slug>")
+def room_page(room_slug):
+    if not _valid_slug(room_slug):
+        return "Invalid room name (letters, numbers, - and _ only). / TÃªn phÃ²ng khÃ´ng há»£p lá» (chá» chá»¯, sá», - vÃ  _).", 400
+    room = db.get_or_create_room(room_slug)
+    if not _has_access(room):
+        return render_template("room_locked.html", room_slug=room_slug)
+    return render_template("room.html", room_slug=room_slug)
+
+
+def _room_or_404(room_slug):
+    if not _valid_slug(room_slug):
+        return None
+    return db.get_or_create_room(room_slug)
+
+
+def _parse_expense_payload(data):
+    description = (data.get("description") or "").strip()
+    try:
+        amount = float(data.get("amount"))
+    except (TypeError, ValueError):
+        return None, ("AMOUNT_INVALID", 400)
+    if amount <= 0:
+        return None, ("AMOUNT_MUST_BE_POSITIVE", 400)
+
+    paid_by = data.get("paid_by")
+    participants = data.get("participants") or []
+    if not paid_by or not participants:
+        return None, ("NEED_PAYER_AND_PARTICIPANTS", 400)
+
+    clean_participants = []
+    for p in participants:
+        try:
+            shares = float(p.get("shares"))
+        except (TypeError, ValueError):
+            return None, ("SHARES_INVALID", 400)
+        if shares <= 0:
+            return None, ("SHARES_MUST_BE_POSITIVE", 400)
+        clean_participants.append({"person_id": p.get("person_id"), "shares": shares})
+
+    if data.get("split_mode") == "amount":
+        total_allocated = sum(p["shares"] for p in clean_participants)
+        if abs(total_allocated - amount) > 0.005:
+            return None, ("AMOUNTS_MUST_SUM_TO_TOTAL", 400)
+
+    return {
+        "description": description,
+        "amount": amount,
+        "paid_by": paid_by,
+        "participants": clean_participants,
+    }, None
+
+
+def _build_state(room):
+    room_id = room["id"]
+    people = db.list_people(room_id)
+    expenses = db.list_expenses(room_id)
+    balances = split_logic.compute_balances(people, expenses)
+    settlements = split_logic.compute_settlements(balances)
+    breakdown = split_logic.compute_breakdown(people, expenses)
+
+    name_by_id = {p["id"]: p["name"] for p in people}
+    balances_out = [
+        {"person_id": pid, "name": name_by_id.get(pid, "?"), "balance": bal}
+        for pid, bal in balances.items()
+    ]
+    settlements_out = [
+        {
+            "from": s["from"],
+            "from_name": name_by_id.get(s["from"], "?"),
+            "to": s["to"],
+            "to_name": name_by_id.get(s["to"], "?"),
+            "amount": s["amount"],
+        }
+        for s in settlements
+    ]
+    breakdown_out = [
+        {
+            "person_id": pid,
+            "name": name_by_id.get(pid, "?"),
+            "items": items,
+            "total": sum(i["owed"] for i in items),
+        }
+        for pid, items in breakdown.items()
+    ]
+
+    return {
+        "people": people,
+        "expenses": expenses,
+        "balances": balances_out,
+        "settlements": settlements_out,
+        "breakdown": breakdown_out,
+        "locked": bool(room["pin_hash"]),
+    }
+
+
+@app.get("/<room_slug>/api/state")
+def api_state(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+    return jsonify(_build_state(room))
+
+
+@app.get("/<room_slug>/api/export.pdf")
+def api_export_pdf(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+
+    lang = request.args.get("lang") if request.args.get("lang") in ("en", "vi") else "en"
+    currency = request.args.get("currency")
+    if currency not in pdf_export.CURRENCIES:
+        currency = "VND"
+    pdf_bytes = pdf_export.build_summary_pdf(room_slug, _build_state(room), lang=lang, currency=currency)
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{room_slug}-summary.pdf"'},
+    )
+
+
+@app.post("/<room_slug>/api/unlock")
+def api_unlock(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not room["pin_hash"]:
+        _grant_access(room["id"])
+        return jsonify({"ok": True})
+
+    data = request.get_json(force=True) or {}
+    pin = (data.get("pin") or "").strip()
+    if not check_password_hash(room["pin_hash"], pin):
+        return jsonify({"error": "WRONG_PIN"}), 403
+
+    _grant_access(room["id"])
+    return jsonify({"ok": True})
+
+
+@app.post("/<room_slug>/api/lock")
+def api_lock(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+
+    data = request.get_json(force=True) or {}
+    pin = (data.get("pin") or "").strip()
+    if not PIN_RE.match(pin):
+        return jsonify({"error": "PIN_INVALID"}), 400
+
+    db.set_room_pin(room["id"], generate_password_hash(pin))
+    _grant_access(room["id"])
+    return jsonify(_build_state(db.get_or_create_room(room_slug)))
+
+
+@app.post("/<room_slug>/api/remove-lock")
+def api_remove_lock(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not room["pin_hash"]:
+        return jsonify({"error": "NOT_LOCKED"}), 400
+
+    data = request.get_json(force=True) or {}
+    pin = (data.get("pin") or "").strip()
+    if not check_password_hash(room["pin_hash"], pin):
+        return jsonify({"error": "WRONG_PIN"}), 403
+
+    db.clear_room_pin(room["id"])
+    return jsonify(_build_state(db.get_or_create_room(room_slug)))
+
+
+@app.post("/<room_slug>/api/people")
+def api_add_person(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+    data = request.get_json(force=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "NAME_REQUIRED"}), 400
+    db.add_person(room["id"], name)
+    return jsonify(_build_state(room))
+
+
+@app.delete("/<room_slug>/api/people/<int:person_id>")
+def api_delete_person(room_slug, person_id):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+    if db.person_has_expenses(room["id"], person_id):
+        return jsonify({"error": "PERSON_HAS_EXPENSES"}), 400
+    db.delete_person(room["id"], person_id)
+    return jsonify(_build_state(room))
+
+
+@app.post("/<room_slug>/api/expenses")
+def api_add_expense(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+
+    data = request.get_json(force=True) or {}
+    payload, error = _parse_expense_payload(data)
+    if error:
+        code, status = error
+        return jsonify({"error": code}), status
+
+    db.add_expense(room["id"], **payload)
+    return jsonify(_build_state(room))
+
+
+@app.put("/<room_slug>/api/expenses/<int:expense_id>")
+def api_update_expense(room_slug, expense_id):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+
+    data = request.get_json(force=True) or {}
+    payload, error = _parse_expense_payload(data)
+    if error:
+        code, status = error
+        return jsonify({"error": code}), status
+
+    db.update_expense(room["id"], expense_id, **payload)
+    return jsonify(_build_state(room))
+
+
+@app.delete("/<room_slug>/api/expenses/<int:expense_id>")
+def api_delete_expense(room_slug, expense_id):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+    db.delete_expense(room["id"], expense_id)
+    return jsonify(_build_state(room))
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True)
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: db.py @@@@@
+import os
+import sqlite3
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "app.db")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    pin_hash TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS people (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL REFERENCES rooms(id),
+    name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL REFERENCES rooms(id),
+    description TEXT,
+    amount REAL NOT NULL,
+    paid_by INTEGER NOT NULL REFERENCES people(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS expense_shares (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    expense_id INTEGER NOT NULL REFERENCES expenses(id),
+    person_id INTEGER NOT NULL REFERENCES people(id),
+    shares REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_slug TEXT,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+def get_conn():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def init_db():
+    conn = get_conn()
+    conn.executescript(SCHEMA)
+    conn.commit()
+    try:
+        conn.execute("ALTER TABLE rooms ADD COLUMN pin_hash TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    conn.close()
+
+
+def get_or_create_room(slug):
+    conn = get_conn()
+    row = conn.execute("SELECT id, slug, pin_hash FROM rooms WHERE slug = ?", (slug,)).fetchone()
+    if row is None:
+        conn.execute("INSERT INTO rooms (slug) VALUES (?)", (slug,))
+        conn.commit()
+        row = conn.execute("SELECT id, slug, pin_hash FROM rooms WHERE slug = ?", (slug,)).fetchone()
+    conn.close()
+    return dict(row)
+
+
+def set_room_pin(room_id, pin_hash):
+    conn = get_conn()
+    conn.execute("UPDATE rooms SET pin_hash = ? WHERE id = ?", (pin_hash, room_id))
+    conn.commit()
+    conn.close()
+
+
+def clear_room_pin(room_id):
+    set_room_pin(room_id, None)
+
+
+def list_people(room_id):
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, name FROM people WHERE room_id = ? ORDER BY id", (room_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_person(room_id, name):
+    conn = get_conn()
+    cur = conn.execute("INSERT INTO people (room_id, name) VALUES (?, ?)", (room_id, name))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return new_id
+
+
+def person_has_expenses(room_id, person_id):
+    conn = get_conn()
+    row = conn.execute(
+        """SELECT 1 FROM expenses WHERE room_id = ? AND paid_by = ?
+           UNION
+           SELECT 1 FROM expense_shares es JOIN expenses e ON es.expense_id = e.id
+           WHERE e.room_id = ? AND es.person_id = ?""",
+        (room_id, person_id, room_id, person_id),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def delete_person(room_id, person_id):
+    conn = get_conn()
+    conn.execute("DELETE FROM people WHERE room_id = ? AND id = ?", (room_id, person_id))
+    conn.commit()
+    conn.close()
+
+
+def list_expenses(room_id):
+    conn = get_conn()
+    expenses = conn.execute(
+        "SELECT id, description, amount, paid_by, created_at FROM expenses WHERE room_id = ? ORDER BY id",
+        (room_id,),
+    ).fetchall()
+    result = []
+    for e in expenses:
+        shares = conn.execute(
+            "SELECT person_id, shares FROM expense_shares WHERE expense_id = ?", (e["id"],)
+        ).fetchall()
+        item = dict(e)
+        item["participants"] = [dict(s) for s in shares]
+        result.append(item)
+    conn.close()
+    return result
+
+
+def add_expense(room_id, description, amount, paid_by, participants):
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO expenses (room_id, description, amount, paid_by) VALUES (?, ?, ?, ?)",
+        (room_id, description, amount, paid_by),
+    )
+    expense_id = cur.lastrowid
+    for p in participants:
+        conn.execute(
+            "INSERT INTO expense_shares (expense_id, person_id, shares) VALUES (?, ?, ?)",
+            (expense_id, p["person_id"], p["shares"]),
+        )
+    conn.commit()
+    conn.close()
+    return expense_id
+
+
+def update_expense(room_id, expense_id, description, amount, paid_by, participants):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE expenses SET description = ?, amount = ?, paid_by = ? WHERE id = ? AND room_id = ?",
+        (description, amount, paid_by, expense_id, room_id),
+    )
+    conn.execute("DELETE FROM expense_shares WHERE expense_id = ?", (expense_id,))
+    for p in participants:
+        conn.execute(
+            "INSERT INTO expense_shares (expense_id, person_id, shares) VALUES (?, ?, ?)",
+            (expense_id, p["person_id"], p["shares"]),
+        )
+    conn.commit()
+    conn.close()
+
+
+def delete_expense(room_id, expense_id):
+    conn = get_conn()
+    conn.execute(
+        "DELETE FROM expense_shares WHERE expense_id IN (SELECT id FROM expenses WHERE id = ? AND room_id = ?)",
+        (expense_id, room_id),
+    )
+    conn.execute("DELETE FROM expenses WHERE id = ? AND room_id = ?", (expense_id, room_id))
+    conn.commit()
+    conn.close()
+
+
+def add_feedback(room_slug, message):
+    conn = get_conn()
+    conn.execute("INSERT INTO feedback (room_slug, message) VALUES (?, ?)", (room_slug, message))
+    conn.commit()
+    conn.close()
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: pdf_export.py @@@@@
+import os
+
+from fpdf import FPDF
+
+_LINE_KWARGS = {"new_x": "LMARGIN", "new_y": "NEXT"}
+
+FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "fonts", "segoeui.ttf")
+
+STRINGS = {
+    "en": {
+        "appTitle": "Split Bill",
+        "sectionExpenseList": "Expense list",
+        "sectionBreakdown": "Breakdown per person (why you owe this)",
+        "sectionBalances": "Balances",
+        "sectionSettlements": "Settlement",
+        "paidBy": "Paid by",
+        "balanceGets": "gets back",
+        "balanceOwes": "owes",
+        "balanceSettled": "settled up",
+        "settlementPays": "pays",
+        "noSettlements": "No transfers needed - everyone is settled up.",
+        "noExpenses": "No expenses yet.",
+        "noDescription": "(no description)",
+        "noParticipation": "hasn't joined any expense yet",
+        "shareUnit": "share(s)",
+    },
+    "vi": {
+        "appTitle": "Chia Tiá»n",
+        "sectionExpenseList": "Danh sÃ¡ch chi tiÃªu",
+        "sectionBreakdown": "Chi tiáº¿t theo ngÆ°á»i (vÃ¬ sao pháº£i tráº£ sá» tiá»n nÃ y)",
+        "sectionBalances": "Sá» dÆ°",
+        "sectionSettlements": "Cáº¥n trá»« ná»£",
+        "paidBy": "Tráº£ bá»i",
+        "balanceGets": "ÄÆ°á»£c nháº­n",
+        "balanceOwes": "pháº£i tráº£",
+        "balanceSettled": "ÄÃ£ cÃ¢n báº±ng",
+        "settlementPays": "tráº£",
+        "noSettlements": "KhÃ´ng cáº§n chuyá»n tiá»n - má»i ngÆ°á»i ÄÃ£ cÃ¢n báº±ng.",
+        "noExpenses": "ChÆ°a cÃ³ chi tiÃªu nÃ o.",
+        "noDescription": "(khÃ´ng mÃ´ táº£)",
+        "noParticipation": "chÆ°a tham gia chi tiÃªu nÃ o",
+        "shareUnit": "pháº§n",
+    },
+}
+
+CURRENCIES = {
+    "VND": {"symbol": "Ä", "decimals": 0, "position": "suffix", "euro_style": True},
+    "USD": {"symbol": "$", "decimals": 2, "position": "prefix", "euro_style": False},
+    "EUR": {"symbol": "â¬", "decimals": 2, "position": "suffix", "euro_style": True},
+    "JPY": {"symbol": "Â¥", "decimals": 0, "position": "prefix", "euro_style": False},
+    "KRW": {"symbol": "â©", "decimals": 0, "position": "prefix", "euro_style": False},
+    "GBP": {"symbol": "Â£", "decimals": 2, "position": "prefix", "euro_style": False},
+}
+
+
+def _fmt_shares(n):
+    return str(int(n)) if n == int(n) else str(n)
+
+
+def _fmt(amount, currency="VND"):
+    cfg = CURRENCIES.get(currency, CURRENCIES["VND"])
+    if cfg["decimals"] > 0:
+        num = f"{amount:,.{cfg['decimals']}f}"
+    else:
+        num = f"{round(amount):,}"
+    if cfg["euro_style"]:
+        num = num.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{cfg['symbol']}{num}" if cfg["position"] == "prefix" else f"{num} {cfg['symbol']}"
+
+
+def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
+    s = STRINGS.get(lang, STRINGS["en"])
+    fmt = lambda amount: _fmt(amount, currency)
+    name_by_id = {p["id"]: p["name"] for p in state["people"]}
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.add_font("Segoe", "", FONT_PATH)
+
+    def line(height, text):
+        pdf.multi_cell(0, height, text, **_LINE_KWARGS)
+
+    def section_title(text):
+        pdf.set_font("Segoe", "", 13)
+        line(8, text)
+        pdf.set_font("Segoe", "", 11)
+
+    pdf.set_font("Segoe", "", 16)
+    line(10, f"{room_slug} - {s['appTitle']}")
+    pdf.ln(2)
+
+    section_title(s["sectionExpenseList"])
+    if not state["expenses"]:
+        line(6, s["noExpenses"])
+    else:
+        for e in state["expenses"]:
+            payer = name_by_id.get(e["paid_by"], "?")
+            desc = e["description"] or s["noDescription"]
+            line(6, f"- {desc}: {fmt(e['amount'])} ({s['paidBy']} {payer})")
+    pdf.ln(3)
+
+    section_title(s["sectionBreakdown"])
+    for b in state["breakdown"]:
+        if not b["items"]:
+            line(6, f"- {b['name']}: {s['noParticipation']}")
+            continue
+        parts = " + ".join(
+            f"{i['description'] or s['noDescription']} {fmt(i['owed'])} ({_fmt_shares(i['shares'])} {s['shareUnit']})"
+            for i in b["items"]
+        )
+        line(6, f"- {b['name']}: {parts} = {fmt(b['total'])}")
+    pdf.ln(3)
+
+    section_title(s["sectionBalances"])
+    for b in state["balances"]:
+        if b["balance"] > 0:
+            text = f"{s['balanceGets']} {fmt(b['balance'])}"
+        elif b["balance"] < 0:
+            text = f"{s['balanceOwes']} {fmt(-b['balance'])}"
+        else:
+            text = s["balanceSettled"]
+        line(6, f"- {b['name']}: {text}")
+    pdf.ln(3)
+
+    section_title(s["sectionSettlements"])
+    if not state["settlements"]:
+        line(6, s["noSettlements"])
+    else:
+        for st in state["settlements"]:
+            line(6, f"- {st['from_name']} {s['settlementPays']} {st['to_name']}: {fmt(st['amount'])}")
+
+    return bytes(pdf.output())
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: split_logic.py @@@@@
+def expense_owed_amounts(expense):
+    """List of {person_id, shares, owed} for one expense, rounded to sum exactly to amount."""
+    total_shares = sum(p["shares"] for p in expense["participants"])
+    if total_shares <= 0:
+        return []
+
+    owed = []
+    for p in expense["participants"]:
+        owed.append({
+            "person_id": p["person_id"],
+            "shares": p["shares"],
+            "owed": round(expense["amount"] * p["shares"] / total_shares),
+        })
+
+    # fix rounding drift so shares sum exactly to amount
+    drift = round(expense["amount"]) - sum(o["owed"] for o in owed)
+    if drift != 0 and owed:
+        biggest = max(range(len(owed)), key=lambda i: owed[i]["shares"])
+        owed[biggest]["owed"] += drift
+
+    return owed
+
+
+def compute_balances(people, expenses):
+    """Net balance per person_id: paid - owed. Positive = should receive money."""
+    balances = {p["id"]: 0.0 for p in people}
+
+    for e in expenses:
+        balances[e["paid_by"]] = balances.get(e["paid_by"], 0.0) + e["amount"]
+
+        for o in expense_owed_amounts(e):
+            balances[o["person_id"]] = balances.get(o["person_id"], 0.0) - o["owed"]
+
+    return {pid: round(bal) for pid, bal in balances.items()}
+
+
+def compute_breakdown(people, expenses):
+    """Per-person list of {expense_id, description, shares, owed} for expenses they took part in."""
+    breakdown = {p["id"]: [] for p in people}
+
+    for e in expenses:
+        for o in expense_owed_amounts(e):
+            breakdown.setdefault(o["person_id"], []).append({
+                "expense_id": e["id"],
+                "description": e["description"],
+                "shares": o["shares"],
+                "owed": o["owed"],
+            })
+
+    return breakdown
+
+
+def compute_settlements(balances):
+    """Greedy debt simplification: minimal list of {from, to, amount} payments."""
+    creditors = [[pid, bal] for pid, bal in balances.items() if bal > 0]
+    debtors = [[pid, -bal] for pid, bal in balances.items() if bal < 0]
+
+    settlements = []
+    while creditors and debtors:
+        creditors.sort(key=lambda x: -x[1])
+        debtors.sort(key=lambda x: -x[1])
+
+        c_id, c_amt = creditors[0]
+        d_id, d_amt = debtors[0]
+        amount = min(c_amt, d_amt)
+
+        settlements.append({"from": d_id, "to": c_id, "amount": amount})
+
+        creditors[0][1] -= amount
+        debtors[0][1] -= amount
+
+        creditors = [c for c in creditors if c[1] > 0]
+        debtors = [d for d in debtors if d[1] > 0]
+
+    return settlements
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: requirements.txt @@@@@
+Flask==3.0.3
+gunicorn==22.0.0
+fpdf2==2.7.9
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: Dockerfile @@@@@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: docker-compose.yml @@@@@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: .gitignore @@@@@
+data/
+__pycache__/
+*.pyc
+.venv/
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: templates/index.html @@@@@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Split Bill</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
+</head>
+<body>
+<div class="theme-toggle-row">
+  <button id="langToggle" type="button" class="lang-toggle">VI</button>
+  <label class="theme-switch">
+    <input type="checkbox" id="themeToggle">
+    <span class="slider"></span>
+  </label>
+</div>
+<div class="landing">
+  <h1 data-i18n="appTitle">Split Bill</h1>
+  <p class="subtitle" data-i18n="tagline">The simplest way to split group expenses</p>
+  <form id="goForm" class="landing-form">
+    <span class="prefix" data-i18n="urlPrefix">splitbill/</span>
+    <input id="slugInput" type="text" data-i18n-placeholder="slugPlaceholder" placeholder="your-group-name" autocomplete="off" autofocus>
+    <button type="submit" data-i18n="goButton">Go</button>
+  </form>
+  <p class="hint" data-i18n="landingHint">No login required. Type any room name and share the link with your group.</p>
+</div>
+
+<footer class="donate-footer">
+  <p data-i18n="donateHeading">Buy the author a coffee</p>
+  <img src="{{ url_for('static', filename='qr-placeholder.jpg') }}" alt="Donate QR code" class="donate-qr">
+  <p class="hint" data-i18n="donateHint">Scan the QR code to donate â thank you for the support!</p>
+</footer>
+
+<script>
+  const form = document.getElementById('goForm');
+  const input = document.getElementById('slugInput');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const slug = input.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_]/g, '');
+    if (slug) window.location.href = '/' + slug;
+  });
+</script>
+
+<button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
+</body>
+</html>
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: templates/room.html @@@@@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ room_slug }} - Split Bill</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
+</head>
+<body data-room="{{ room_slug }}">
+<header class="room-header">
+  <h1>{{ room_slug }}</h1>
+  <div class="room-header-actions">
+    <button id="langToggle" type="button" class="lang-toggle">VI</button>
+    <select id="currencySelect" class="currency-select"></select>
+    <label class="theme-switch">
+      <input type="checkbox" id="themeToggle">
+      <span class="slider"></span>
+    </label>
+    <button id="lockToggleBtn" type="button" class="header-btn"></button>
+    <button id="copyLinkBtn" type="button" class="header-btn" data-i18n="copyLink">Copy room link</button>
+  </div>
+</header>
+
+<main class="room-main">
+
+  <section class="card">
+    <h2 data-i18n="sectionMembers">1. Members</h2>
+    <div class="bulk-add">
+      <label><span data-i18n="peopleCountLabel">Number of people:</span> <input id="peopleCount" type="number" min="1" max="50" value="8"></label>
+      <button id="genFieldsBtn" type="button" data-i18n="genFieldsBtn">Generate name fields</button>
+    </div>
+    <div id="bulkFields" class="bulk-fields"></div>
+    <button id="saveBulkBtn" type="button" class="hidden" data-i18n="saveBulkBtn">Save all names</button>
+
+    <div class="single-add">
+      <input id="singleNameInput" type="text" data-i18n-placeholder="singleNamePlaceholder" placeholder="Add one person...">
+      <button id="addPersonBtn" type="button" data-i18n="addBtn">Add</button>
+    </div>
+
+    <ul id="peopleList" class="people-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionAddExpense">2. Add expense</h2>
+    <form id="expenseForm">
+      <label><span data-i18n="descLabel">Description</span> <input id="expDesc" type="text" data-i18n-placeholder="descPlaceholder" placeholder="Dinner, gas, ..."></label>
+      <label><span id="amountLabelText">Amount</span> <input id="expAmount" type="number" min="0" step="any" required></label>
+      <label><span data-i18n="paidByLabel">Paid by</span>
+        <select id="expPaidBy" required></select>
+      </label>
+
+      <div>
+        <p class="label-like" data-i18n="participantsLabel">Split with (check participants, enter shares):</p>
+        <div class="split-mode-toggle">
+          <button type="button" id="modeSharesBtn" class="mode-btn active" data-i18n="splitModeShares">By shares</button>
+          <button type="button" id="modeAmountBtn" class="mode-btn" data-i18n="splitModeAmount">By exact amount</button>
+        </div>
+        <div id="participantsBox" class="participants-box"></div>
+        <div id="splitStatus" class="split-status hidden"></div>
+        <button type="button" id="evenSplitBtn" class="hidden secondary-btn small-btn" data-i18n="evenSplitBtn">Split evenly</button>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" id="expenseSubmitBtn" data-i18n="addExpenseBtn">Add expense</button>
+        <button type="button" id="cancelEditBtn" class="hidden secondary-btn" data-i18n="cancelEditBtn">Cancel</button>
+      </div>
+      <p id="expenseError" class="error"></p>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionExpenseList">3. Expense list</h2>
+    <div class="table-scroll">
+      <table class="expense-table">
+        <thead><tr>
+          <th data-i18n="thDesc">Description</th>
+          <th data-i18n="thAmount">Amount</th>
+          <th data-i18n="thPaidBy">Paid by</th>
+          <th data-i18n="thSplitWith">Split with</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="expenseTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionBalances">4. Balances</h2>
+    <ul id="balancesList" class="balances-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionBreakdown">5. Breakdown per person</h2>
+    <ul id="breakdownList" class="breakdown-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionSettlements">6. Settlement</h2>
+    <ul id="settlementsList" class="settlements-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionExport">7. Export summary</h2>
+    <textarea id="summaryText" class="summary-text" rows="10" readonly></textarea>
+    <div class="export-actions">
+      <button id="copySummaryBtn" type="button" data-i18n="copySummaryBtn">Copy summary</button>
+      <button id="downloadPdfBtn" type="button" class="secondary-btn" data-i18n="downloadPdfBtn">Download PDF</button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="donate-footer">
+  <p data-i18n="donateHeading">Buy the author a coffee</p>
+  <img src="{{ url_for('static', filename='qr-placeholder.jpg') }}" alt="Donate QR code" class="donate-qr">
+  <p class="hint" data-i18n="donateHint">Scan the QR code to donate â thank you for the support!</p>
+</footer>
+
+<button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
+
+<script src="{{ url_for('static', filename='room.js') }}"></script>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
+</body>
+</html>
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: templates/room_locked.html @@@@@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ room_slug }} - Split Bill</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
+</head>
+<body data-room="{{ room_slug }}">
+<div class="theme-toggle-row">
+  <button id="langToggle" type="button" class="lang-toggle">VI</button>
+  <label class="theme-switch">
+    <input type="checkbox" id="themeToggle">
+    <span class="slider"></span>
+  </label>
+</div>
+<div class="landing">
+  <h1 data-i18n="lockedTitle">This room is locked</h1>
+  <p class="subtitle" data-i18n="lockedSubtitle">Enter the PIN to view this room</p>
+  <form id="pinForm" class="landing-form">
+    <input id="pinInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" autofocus data-i18n-placeholder="pinPlaceholder" placeholder="PIN">
+    <button type="submit" data-i18n="unlockBtn">Unlock</button>
+  </form>
+  <p id="pinError" class="error"></p>
+</div>
+<script>
+  const roomSlug = {{ room_slug | tojson }};
+  const form = document.getElementById('pinForm');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pin = document.getElementById('pinInput').value.trim();
+    const errorEl = document.getElementById('pinError');
+    errorEl.textContent = '';
+
+    const res = await fetch(`/${roomSlug}/api/unlock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = t(data.error) || t('GENERIC_ERROR');
+      return;
+    }
+    window.location.reload();
+  });
+</script>
+
+<button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
+</body>
+</html>
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: static/style.css @@@@@
+:root {
+  --bg: #f4f5f7;
+  --text: #1f2430;
+  --muted: #666;
+  --hint: #888;
+  --card-bg: #ffffff;
+  --card-shadow: rgba(0, 0, 0, 0.08);
+  --border: #e0e2e8;
+  --border-light: #eee;
+  --chip-bg: #eef2fb;
+  --input-bg: #ffffff;
+  --primary: #2f6feb;
+  --primary-text: #ffffff;
+  --danger: #cc3333;
+  --positive: #1a8f4c;
+  --table-row-hover: #f7f8fb;
+}
+
+[data-theme="dark"] {
+  --bg: #14161c;
+  --text: #e8e9ee;
+  --muted: #a2a6b3;
+  --hint: #8b8f9c;
+  --card-bg: #1d2027;
+  --card-shadow: rgba(0, 0, 0, 0.45);
+  --border: #333742;
+  --border-light: #2a2d35;
+  --chip-bg: #262b38;
+  --input-bg: #262b38;
+  --primary: #5b8ff2;
+  --primary-text: #0d1117;
+  --danger: #ff7373;
+  --positive: #4fd18b;
+  --table-row-hover: #23262d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ---- theme toggle switch ---- */
+.theme-switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 26px;
+  flex-shrink: 0;
+}
+.theme-switch input { opacity: 0; width: 0; height: 0; }
+.theme-switch .slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.theme-switch .slider::before {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+.theme-switch input:checked + .slider { background: rgba(0, 0, 0, 0.35); }
+.theme-switch input:checked + .slider::before { transform: translateX(20px); }
+
+.theme-toggle-row .theme-switch .slider { background: #d7dae0; }
+.theme-toggle-row .theme-switch input:checked + .slider { background: #444a58; }
+.theme-toggle-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 16px 20px 0; }
+
+.lang-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.room-header .lang-toggle { border-color: var(--primary-text); color: var(--primary-text); }
+
+.currency-select {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.room-header .currency-select { border-color: var(--primary-text); color: var(--primary-text); background: var(--primary); }
+.room-header .currency-select option { color: var(--text); background: var(--card-bg); }
+
+.feedback-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  background: var(--primary);
+  color: var(--primary-text);
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 50;
+}
+
+.landing {
+  max-width: 480px;
+  margin: 8vh auto 0;
+  text-align: center;
+  padding: 0 20px;
+}
+.landing h1 { font-size: 2.4rem; margin-bottom: 4px; }
+.subtitle { color: var(--muted); margin-top: 0; }
+.landing-form { display: flex; align-items: center; border: 2px solid var(--primary); border-radius: 8px; overflow: hidden; margin: 24px 0 12px; background: var(--input-bg); }
+.landing-form .prefix { padding: 10px 4px 10px 12px; color: var(--hint); }
+.landing-form input { flex: 1; border: none; outline: none; padding: 10px 4px; font-size: 1rem; background: transparent; color: var(--text); }
+.landing-form button { border: none; background: var(--primary); color: var(--primary-text); padding: 10px 18px; font-size: 1rem; cursor: pointer; }
+.hint { color: var(--hint); font-size: 0.9rem; }
+
+.room-header {
+  background: var(--primary);
+  color: var(--primary-text);
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.room-header h1 { margin: 0; font-size: 1.4rem; }
+.room-header-actions { display: flex; align-items: center; gap: 14px; }
+.room-header .header-btn { background: var(--card-bg); color: var(--primary); border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 600; }
+
+.room-main {
+  max-width: 720px;
+  margin: 24px auto;
+  padding: 0 16px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px var(--card-shadow);
+}
+.card h2 { margin-top: 0; font-size: 1.1rem; }
+
+.bulk-add { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.bulk-add input { width: 70px; padding: 6px; }
+.bulk-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.bulk-fields input { padding: 6px 8px; width: 140px; }
+
+.single-add { display: flex; gap: 8px; margin: 10px 0; }
+.single-add input { flex: 1; padding: 8px; }
+
+button { cursor: pointer; }
+input, select {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+#genFieldsBtn, #saveBulkBtn, #addPersonBtn { background: var(--primary); color: var(--primary-text); border: none; border-radius: 6px; padding: 7px 14px; }
+.hidden { display: none; }
+
+.people-list { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.people-list li { background: var(--chip-bg); padding: 6px 10px; border-radius: 16px; display: flex; align-items: center; gap: 8px; }
+.people-list button { background: none; border: none; color: var(--danger); font-weight: bold; }
+
+#expenseForm { display: flex; flex-direction: column; gap: 10px; }
+#expenseForm label { display: flex; flex-direction: column; font-size: 0.9rem; gap: 4px; color: var(--muted); }
+#expenseForm input, #expenseForm select { padding: 8px; font-size: 1rem; }
+#expenseForm button[type="submit"] { align-self: flex-start; background: var(--primary); color: var(--primary-text); border: none; border-radius: 6px; padding: 9px 18px; }
+.label-like { margin: 4px 0; font-size: 0.9rem; color: var(--muted); }
+
+.split-mode-toggle { display: flex; gap: 8px; margin-bottom: 8px; }
+.mode-btn { background: var(--input-bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 0.88rem; }
+.mode-btn.active { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
+
+.participants-box { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+.participant-row { display: flex; align-items: center; gap: 10px; }
+.participant-row input[type="number"] { width: 70px; padding: 4px; }
+.participants-box.mode-amount .participant-shares { width: 100px; }
+
+.split-status { margin: 8px 0 0; font-size: 0.88rem; font-weight: 600; }
+.split-status-ok { color: var(--positive); }
+.split-status-bad { color: var(--danger); }
+.small-btn { margin-top: 8px; padding: 6px 12px; font-size: 0.85rem; }
+
+.error { color: var(--danger); min-height: 1.2em; }
+
+.table-scroll { overflow-x: auto; }
+.expense-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.expense-table th, .expense-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border-light); white-space: nowrap; }
+.expense-table tbody tr:hover { background: var(--table-row-hover); }
+.expense-table button { background: none; border: none; color: var(--danger); padding: 4px 6px; }
+.expense-table button.edit-btn { color: var(--primary); }
+
+.form-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.secondary-btn { background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 9px 18px; }
+
+.summary-text {
+  width: 100%;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  padding: 10px;
+  resize: vertical;
+}
+.export-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+.balances-list, .settlements-list, .breakdown-list { list-style: none; padding: 0; }
+.balances-list li, .settlements-list li, .breakdown-list li { padding: 6px 0; border-bottom: 1px solid var(--border-light); font-size: 0.92rem; }
+.balance-positive { color: var(--positive); font-weight: 600; }
+.balance-negative { color: var(--danger); font-weight: 600; }
+.balance-zero { color: var(--hint); }
+
+.donate-footer {
+  max-width: 320px;
+  margin: 40px auto 32px;
+  padding: 0 16px 40px;
+  text-align: center;
+}
+.donate-footer p { margin: 0 0 12px; color: var(--muted); font-size: 0.95rem; }
+.donate-footer .hint { margin: 12px 0 0; }
+.donate-qr {
+  width: 160px;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 10px;
+  background: var(--card-bg);
+  box-shadow: 0 1px 3px var(--card-shadow);
+}
+
+@media (max-width: 640px) {
+  .theme-toggle-row { padding: 12px 14px 0; }
+
+  .landing { margin-top: 6vh; padding: 0 14px; }
+  .landing h1 { font-size: 1.9rem; }
+  .landing-form { flex-wrap: nowrap; }
+  .landing-form .prefix { font-size: 0.8rem; padding-left: 8px; }
+  .landing-form input { min-width: 0; }
+
+  .room-header { flex-wrap: wrap; padding: 12px 14px; gap: 10px; }
+  .room-header h1 { font-size: 1.15rem; word-break: break-word; width: 100%; }
+  .room-header-actions { flex-wrap: wrap; gap: 8px; width: 100%; justify-content: flex-start; }
+  .room-header .header-btn { padding: 7px 10px; font-size: 0.85rem; }
+
+  .room-main { margin: 16px auto; padding: 0 12px 40px; gap: 14px; }
+  .card { padding: 14px; }
+  .card h2 { font-size: 1rem; }
+
+  .bulk-add { flex-wrap: wrap; }
+  .bulk-fields input { width: calc(50% - 4px); }
+
+  .participant-row input[type="number"] { width: 56px; }
+  .participants-box.mode-amount .participant-shares { width: 82px; }
+  .split-mode-toggle { flex-wrap: wrap; }
+  .mode-btn { flex: 1; }
+
+  .expense-table { font-size: 0.85rem; }
+  .expense-table th, .expense-table td { padding: 6px; }
+
+  .form-actions { width: 100%; }
+  .form-actions button { flex: 1; }
+
+  .export-actions button { flex: 1; }
+
+  .donate-qr { width: 130px; }
+
+  .feedback-fab { right: 14px; bottom: 14px; padding: 10px 14px; font-size: 0.9rem; }
+}
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: static/room.js @@@@@
+const room = document.body.dataset.room;
+const apiBase = `/${room}/api`;
+
+let state = { people: [], expenses: [], balances: [], settlements: [], breakdown: [] };
+let editingExpenseId = null;
+let splitMode = 'shares';
+
+function fmt(n) {
+  return formatCurrency(n);
+}
+
+function updateAmountLabel() {
+  const el = document.getElementById('amountLabelText');
+  el.textContent = `${t('amountLabel')} (${CURRENCIES[currentCurrency()].symbol})`;
+}
+
+syncCurrencySelect();
+
+async function loadState() {
+  const res = await fetch(`${apiBase}/state`);
+  if (!res.ok) {
+    // access was revoked (room got locked elsewhere) - let the server show the PIN gate
+    window.location.reload();
+    return;
+  }
+  state = await res.json();
+  render();
+}
+
+function render() {
+  renderPeopleList();
+  renderPaidBySelect();
+  renderParticipantsBox();
+  renderExpenseTable();
+  renderBalances();
+  renderBreakdown();
+  renderSettlements();
+  renderLockButton();
+  updateExpenseFormMode();
+  updateAmountLabel();
+  renderSummary();
+}
+
+function renderLockButton() {
+  const btn = document.getElementById('lockToggleBtn');
+  btn.textContent = state.locked ? t('removeLockBtn') : t('lockRoomBtn');
+}
+
+function renderPeopleList() {
+  const ul = document.getElementById('peopleList');
+  ul.innerHTML = '';
+  state.people.forEach((p) => {
+    const li = document.createElement('li');
+    li.textContent = p.name;
+    const btn = document.createElement('button');
+    btn.textContent = 'Ã';
+    btn.title = t('deleteBtn');
+    btn.addEventListener('click', () => deletePerson(p.id));
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+
+function renderPaidBySelect() {
+  const sel = document.getElementById('expPaidBy');
+  const prev = sel.value;
+  sel.innerHTML = `<option value="">${t('paidBySelectDefault')}</option>`;
+  state.people.forEach((p) => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+  if (prev) sel.value = prev;
+}
+
+function renderParticipantsBox() {
+  const box = document.getElementById('participantsBox');
+  box.classList.toggle('mode-amount', splitMode === 'amount');
+  box.innerHTML = '';
+  state.people.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'participant-row';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = true;
+    checkbox.dataset.personId = p.id;
+    checkbox.className = 'participant-check';
+    checkbox.addEventListener('change', updateSplitStatus);
+
+    const label = document.createElement('span');
+    label.textContent = p.name;
+    label.style.flex = '1';
+
+    const shares = document.createElement('input');
+    shares.type = 'number';
+    shares.dataset.personId = p.id;
+    shares.className = 'participant-shares';
+    shares.addEventListener('input', updateSplitStatus);
+    if (splitMode === 'amount') {
+      shares.min = '0';
+      shares.step = 'any';
+      shares.value = '0';
+    } else {
+      shares.min = '0.5';
+      shares.step = '0.5';
+      shares.value = '1';
+    }
+
+    row.appendChild(checkbox);
+    row.appendChild(label);
+    row.appendChild(shares);
+    box.appendChild(row);
+  });
+  updateSplitStatus();
+}
+
+function updateSplitStatus() {
+  const statusEl = document.getElementById('splitStatus');
+  const evenBtn = document.getElementById('evenSplitBtn');
+  if (splitMode !== 'amount') {
+    statusEl.classList.add('hidden');
+    evenBtn.classList.add('hidden');
+    return;
+  }
+  evenBtn.classList.remove('hidden');
+  statusEl.classList.remove('hidden');
+
+  const target = parseFloat(document.getElementById('expAmount').value) || 0;
+  let allocated = 0;
+  document.querySelectorAll('.participant-check').forEach((c) => {
+    if (c.checked) {
+      const sharesInput = document.querySelector(`.participant-shares[data-person-id="${c.dataset.personId}"]`);
+      allocated += parseFloat(sharesInput.value) || 0;
+    }
+  });
+
+  const diff = target - allocated;
+  if (Math.abs(diff) < 0.005) {
+    statusEl.textContent = `${t('splitExact')} (${fmt(allocated)})`;
+    statusEl.className = 'split-status split-status-ok';
+  } else if (diff > 0) {
+    statusEl.textContent = `${t('splitShortBy')} ${fmt(diff)} (${fmt(allocated)} / ${fmt(target)})`;
+    statusEl.className = 'split-status split-status-bad';
+  } else {
+    statusEl.textContent = `${t('splitOverBy')} ${fmt(-diff)} (${fmt(allocated)} / ${fmt(target)})`;
+    statusEl.className = 'split-status split-status-bad';
+  }
+}
+
+function splitEvenly() {
+  const decimals = CURRENCIES[currentCurrency()].decimals;
+  const multiplier = Math.pow(10, decimals);
+  const targetUnits = Math.round((parseFloat(document.getElementById('expAmount').value) || 0) * multiplier);
+  const checks = Array.from(document.querySelectorAll('.participant-check')).filter((c) => c.checked);
+  if (checks.length === 0) return;
+
+  const baseUnits = Math.floor(targetUnits / checks.length);
+  const remainderUnits = targetUnits - baseUnits * checks.length;
+  checks.forEach((c, i) => {
+    const sharesInput = document.querySelector(`.participant-shares[data-person-id="${c.dataset.personId}"]`);
+    const units = baseUnits + (i < remainderUnits ? 1 : 0);
+    sharesInput.value = (units / multiplier).toFixed(decimals);
+  });
+  updateSplitStatus();
+}
+
+function renderExpenseTable() {
+  const tbody = document.getElementById('expenseTableBody');
+  tbody.innerHTML = '';
+  const nameById = Object.fromEntries(state.people.map((p) => [p.id, p.name]));
+
+  state.expenses.forEach((e) => {
+    const tr = document.createElement('tr');
+    const participantsText = e.participants
+      .map((s) => `${nameById[s.person_id] || '?'} (${s.shares})`)
+      .join(', ');
+
+    tr.innerHTML = `
+      <td>${e.description || ''}</td>
+      <td>${fmt(e.amount)}</td>
+      <td>${nameById[e.paid_by] || '?'}</td>
+      <td>${participantsText}</td>
+      <td></td>
+    `;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = t('editBtn');
+    editBtn.className = 'edit-btn';
+    editBtn.addEventListener('click', () => startEditExpense(e));
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = t('deleteBtn');
+    delBtn.addEventListener('click', () => deleteExpense(e.id));
+
+    tr.lastElementChild.appendChild(editBtn);
+    tr.lastElementChild.appendChild(delBtn);
+    tbody.appendChild(tr);
+  });
+}
+
+function renderBalances() {
+  const ul = document.getElementById('balancesList');
+  ul.innerHTML = '';
+  state.balances.forEach((b) => {
+    const li = document.createElement('li');
+    let cls = 'balance-zero';
+    let text = `${b.name}: ${t('balanceSettled')}`;
+    if (b.balance > 0) {
+      cls = 'balance-positive';
+      text = `${b.name}: ${t('balanceGets')} ${fmt(b.balance)}`;
+    } else if (b.balance < 0) {
+      cls = 'balance-negative';
+      text = `${b.name}: ${t('balanceOwes')} ${fmt(-b.balance)}`;
+    }
+    li.className = cls;
+    li.textContent = text;
+    ul.appendChild(li);
+  });
+}
+
+function renderBreakdown() {
+  const ul = document.getElementById('breakdownList');
+  ul.innerHTML = '';
+  state.breakdown.forEach((b) => {
+    const li = document.createElement('li');
+    if (b.items.length === 0) {
+      li.textContent = `${b.name}: ${t('noExpensesYet')}`;
+      ul.appendChild(li);
+      return;
+    }
+    const parts = b.items
+      .map((i) => `${i.description || t('noDescription')} ${fmt(i.owed)} (${i.shares} ${t('shareUnit')})`)
+      .join(' + ');
+    li.textContent = `${b.name}: ${parts} = ${fmt(b.total)}`;
+    ul.appendChild(li);
+  });
+}
+
+function renderSettlements() {
+  const ul = document.getElementById('settlementsList');
+  ul.innerHTML = '';
+  if (state.settlements.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = t('noSettlements');
+    ul.appendChild(li);
+    return;
+  }
+  state.settlements.forEach((s) => {
+    const li = document.createElement('li');
+    li.textContent = `${s.from_name} ${t('settlementPays')} ${s.to_name}: ${fmt(s.amount)}`;
+    ul.appendChild(li);
+  });
+}
+
+function updateExpenseFormMode() {
+  const submitBtn = document.getElementById('expenseSubmitBtn');
+  const cancelBtn = document.getElementById('cancelEditBtn');
+  submitBtn.textContent = editingExpenseId ? t('updateExpenseBtn') : t('addExpenseBtn');
+  cancelBtn.classList.toggle('hidden', !editingExpenseId);
+}
+
+function setSplitMode(mode) {
+  splitMode = mode;
+  document.getElementById('modeSharesBtn').classList.toggle('active', mode === 'shares');
+  document.getElementById('modeAmountBtn').classList.toggle('active', mode === 'amount');
+  renderParticipantsBox();
+}
+
+function startEditExpense(expense) {
+  editingExpenseId = expense.id;
+  document.getElementById('expenseError').textContent = '';
+  document.getElementById('expDesc').value = expense.description || '';
+  document.getElementById('expAmount').value = expense.amount;
+  document.getElementById('expPaidBy').value = expense.paid_by;
+
+  setSplitMode('shares');
+  document.querySelectorAll('.participant-check').forEach((c) => {
+    const pid = parseInt(c.dataset.personId, 10);
+    const match = expense.participants.find((p) => p.person_id === pid);
+    c.checked = !!match;
+    const sharesInput = document.querySelector(`.participant-shares[data-person-id="${pid}"]`);
+    sharesInput.value = match ? match.shares : 1;
+  });
+
+  updateExpenseFormMode();
+  document.getElementById('expenseForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEditExpense() {
+  editingExpenseId = null;
+  document.getElementById('expenseForm').reset();
+  document.getElementById('expenseError').textContent = '';
+  setSplitMode('shares');
+  updateExpenseFormMode();
+}
+
+function buildSummaryText() {
+  const nameById = Object.fromEntries(state.people.map((p) => [p.id, p.name]));
+  const lines = [`${room} â ${t('appTitle')}`, ''];
+
+  lines.push(t('sectionExpenseList'));
+  if (state.expenses.length === 0) {
+    lines.push('-');
+  } else {
+    state.expenses.forEach((e) => {
+      lines.push(`- ${e.description || t('noDescription')}: ${fmt(e.amount)} (${t('paidByLabel')} ${nameById[e.paid_by] || '?'})`);
+    });
+  }
+  lines.push('', t('sectionBreakdown'));
+  state.breakdown.forEach((b) => {
+    if (b.items.length === 0) {
+      lines.push(`- ${b.name}: ${t('noExpensesYet')}`);
+      return;
+    }
+    const parts = b.items
+      .map((i) => `${i.description || t('noDescription')} ${fmt(i.owed)} (${i.shares} ${t('shareUnit')})`)
+      .join(' + ');
+    lines.push(`- ${b.name}: ${parts} = ${fmt(b.total)}`);
+  });
+
+  lines.push('', t('sectionBalances'));
+  state.balances.forEach((b) => {
+    let text = t('balanceSettled');
+    if (b.balance > 0) text = `${t('balanceGets')} ${fmt(b.balance)}`;
+    else if (b.balance < 0) text = `${t('balanceOwes')} ${fmt(-b.balance)}`;
+    lines.push(`- ${b.name}: ${text}`);
+  });
+
+  lines.push('', t('sectionSettlements'));
+  if (state.settlements.length === 0) {
+    lines.push(t('noSettlements'));
+  } else {
+    state.settlements.forEach((s) => {
+      lines.push(`- ${s.from_name} ${t('settlementPays')} ${s.to_name}: ${fmt(s.amount)}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function renderSummary() {
+  document.getElementById('summaryText').value = buildSummaryText();
+}
+
+// ---- People actions ----
+
+document.getElementById('genFieldsBtn').addEventListener('click', () => {
+  const count = parseInt(document.getElementById('peopleCount').value, 10) || 0;
+  const container = document.getElementById('bulkFields');
+  container.innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = `${t('namePlaceholderPrefix')} ${i + 1}`;
+    container.appendChild(input);
+  }
+  document.getElementById('saveBulkBtn').classList.toggle('hidden', count === 0);
+});
+
+document.getElementById('saveBulkBtn').addEventListener('click', async () => {
+  const inputs = document.querySelectorAll('#bulkFields input');
+  const names = Array.from(inputs).map((i) => i.value.trim()).filter(Boolean);
+  for (const name of names) {
+    await fetch(`${apiBase}/people`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+  }
+  document.getElementById('bulkFields').innerHTML = '';
+  document.getElementById('saveBulkBtn').classList.add('hidden');
+  await loadState();
+});
+
+document.getElementById('addPersonBtn').addEventListener('click', addSinglePerson);
+document.getElementById('singleNameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addSinglePerson();
+});
+
+async function addSinglePerson() {
+  const input = document.getElementById('singleNameInput');
+  const name = input.value.trim();
+  if (!name) return;
+  await fetch(`${apiBase}/people`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  input.value = '';
+  await loadState();
+}
+
+async function deletePerson(id) {
+  const res = await fetch(`${apiBase}/people/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json();
+    alert(t(data.error) || t('GENERIC_ERROR'));
+    return;
+  }
+  await loadState();
+}
+
+// ---- Expense actions ----
+
+document.getElementById('modeSharesBtn').addEventListener('click', () => setSplitMode('shares'));
+document.getElementById('modeAmountBtn').addEventListener('click', () => setSplitMode('amount'));
+document.getElementById('evenSplitBtn').addEventListener('click', splitEvenly);
+document.getElementById('expAmount').addEventListener('input', updateSplitStatus);
+
+document.getElementById('expenseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById('expenseError');
+  errorEl.textContent = '';
+
+  const description = document.getElementById('expDesc').value.trim();
+  const amount = document.getElementById('expAmount').value;
+  const paidBy = document.getElementById('expPaidBy').value;
+
+  const checks = document.querySelectorAll('.participant-check');
+  const participants = [];
+  checks.forEach((c) => {
+    if (c.checked) {
+      const sharesInput = document.querySelector(
+        `.participant-shares[data-person-id="${c.dataset.personId}"]`
+      );
+      participants.push({ person_id: parseInt(c.dataset.personId, 10), shares: parseFloat(sharesInput.value) });
+    }
+  });
+
+  if (splitMode === 'amount') {
+    const allocated = participants.reduce((sum, p) => sum + p.shares, 0);
+    if (Math.abs(allocated - (parseFloat(amount) || 0)) > 0.005) {
+      errorEl.textContent = t('AMOUNTS_MUST_SUM_TO_TOTAL');
+      return;
+    }
+  }
+
+  const url = editingExpenseId ? `${apiBase}/expenses/${editingExpenseId}` : `${apiBase}/expenses`;
+  const method = editingExpenseId ? 'PUT' : 'POST';
+
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description, amount, paid_by: parseInt(paidBy, 10), participants, split_mode: splitMode }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    errorEl.textContent = t(data.error) || t('GENERIC_ERROR');
+    return;
+  }
+  document.getElementById('expenseForm').reset();
+  editingExpenseId = null;
+  setSplitMode('shares');
+  state = data;
+  render();
+});
+
+document.getElementById('cancelEditBtn').addEventListener('click', cancelEditExpense);
+
+async function deleteExpense(id) {
+  await fetch(`${apiBase}/expenses/${id}`, { method: 'DELETE' });
+  await loadState();
+}
+
+// ---- Lock / unlock ----
+
+document.getElementById('lockToggleBtn').addEventListener('click', async () => {
+  if (state.locked) {
+    const pin = prompt(t('enterPinToUnlock'));
+    if (pin === null) return;
+    const res = await fetch(`${apiBase}/remove-lock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(t(data.error) || t('GENERIC_ERROR'));
+      return;
+    }
+    state = data;
+    render();
+  } else {
+    const pin = prompt(t('setPinToLock'));
+    if (pin === null) return;
+    const res = await fetch(`${apiBase}/lock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(t(data.error) || t('GENERIC_ERROR'));
+      return;
+    }
+    state = data;
+    render();
+  }
+});
+
+// ---- Misc ----
+
+document.getElementById('copyLinkBtn').addEventListener('click', async () => {
+  const url = new URL(window.location.href);
+  url.searchParams.set('lang', currentLang());
+  await navigator.clipboard.writeText(url.toString());
+  const btn = document.getElementById('copyLinkBtn');
+  const old = btn.textContent;
+  btn.textContent = t('copied');
+  setTimeout(() => (btn.textContent = old), 1500);
+});
+
+document.getElementById('copySummaryBtn').addEventListener('click', async () => {
+  await navigator.clipboard.writeText(document.getElementById('summaryText').value);
+  const btn = document.getElementById('copySummaryBtn');
+  const old = btn.textContent;
+  btn.textContent = t('copied');
+  setTimeout(() => (btn.textContent = old), 1500);
+});
+
+document.getElementById('downloadPdfBtn').addEventListener('click', () => {
+  window.location.href = `${apiBase}/export.pdf?lang=${currentLang()}&currency=${currentCurrency()}`;
+});
+
+document.addEventListener('langchange', () => render());
+document.addEventListener('currencychange', () => render());
+
+loadState();
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: static/i18n.js @@@@@
+const translations = {
+  en: {
+    appTitle: "Split Bill",
+    tagline: "The simplest way to split group expenses",
+    urlPrefix: "splitbill/",
+    slugPlaceholder: "your-group-name",
+    goButton: "Go",
+    landingHint: "No login required. Type any room name and share the link with your group.",
+    copyLink: "Copy room link",
+    copied: "Copied!",
+    sectionMembers: "1. Members",
+    peopleCountLabel: "Number of people:",
+    genFieldsBtn: "Generate name fields",
+    saveBulkBtn: "Save all names",
+    singleNamePlaceholder: "Add one person...",
+    addBtn: "Add",
+    sectionAddExpense: "2. Add expense",
+    descLabel: "Description",
+    descPlaceholder: "Dinner, gas, ...",
+    amountLabel: "Amount",
+    paidByLabel: "Paid by",
+    paidBySelectDefault: "-- select person --",
+    participantsLabel: "Split with (check participants, enter shares):",
+    splitModeShares: "By shares",
+    splitModeAmount: "By exact amount",
+    evenSplitBtn: "Split evenly",
+    splitExact: "â Fully allocated, matches the total",
+    splitShortBy: "Short by",
+    splitOverBy: "Over by",
+    addExpenseBtn: "Add expense",
+    updateExpenseBtn: "Update expense",
+    cancelEditBtn: "Cancel",
+    editBtn: "Edit",
+    sectionExpenseList: "3. Expense list",
+    thDesc: "Description",
+    thAmount: "Amount",
+    thPaidBy: "Paid by",
+    thSplitWith: "Split with",
+    deleteBtn: "Delete",
+    sectionBalances: "4. Balances",
+    sectionBreakdown: "5. Breakdown per person",
+    sectionSettlements: "6. Settlement",
+    sectionExport: "7. Export summary",
+    copySummaryBtn: "Copy summary",
+    downloadPdfBtn: "Download PDF",
+    noSettlements: "No transfers needed â everyone is settled up.",
+    balanceSettled: "settled up",
+    balanceGets: "gets back",
+    balanceOwes: "owes",
+    settlementPays: "pays",
+    noExpensesYet: "hasn't joined any expense yet",
+    noDescription: "(no description)",
+    shareUnit: "share(s)",
+    namePlaceholderPrefix: "Person",
+    donateHeading: "Buy the author a coffee",
+    donateHint: "Scan the QR code to donate â thank you for the support!",
+    lockedTitle: "This room is locked",
+    lockedSubtitle: "Enter the PIN to view this room",
+    pinPlaceholder: "PIN",
+    unlockBtn: "Unlock",
+    lockRoomBtn: "Lock room",
+    removeLockBtn: "Remove lock",
+    enterPinToUnlock: "Enter the PIN to remove the lock:",
+    setPinToLock: "Set a 4-6 digit PIN to lock this room:",
+    NAME_REQUIRED: "Name is required",
+    PERSON_HAS_EXPENSES: "This person already has transactions and cannot be removed.",
+    AMOUNT_INVALID: "Invalid amount",
+    AMOUNT_MUST_BE_POSITIVE: "Amount must be greater than 0",
+    NEED_PAYER_AND_PARTICIPANTS: "Please select a payer and at least one participant",
+    SHARES_INVALID: "Invalid share value",
+    SHARES_MUST_BE_POSITIVE: "Shares must be greater than 0",
+    AMOUNTS_MUST_SUM_TO_TOTAL: "The amounts entered must add up exactly to the total",
+    WRONG_PIN: "Incorrect PIN",
+    PIN_INVALID: "PIN must be 4-6 digits",
+    NOT_LOCKED: "This room is not locked",
+    ROOM_LOCKED: "This room is locked",
+    MESSAGE_REQUIRED: "Please write something first",
+    GENERIC_ERROR: "Something went wrong",
+    feedbackBtn: "Feedback",
+    feedbackPrompt: "What's on your mind? (bug, suggestion, anything)",
+    feedbackThanks: "Thanks for the feedback!",
+  },
+  vi: {
+    appTitle: "Chia Tiá»n",
+    tagline: "CÃ¡ch ÄÆ¡n giáº£n nháº¥t Äá» chia tiá»n nhÃ³m",
+    urlPrefix: "chiatien/",
+    slugPlaceholder: "ten-nhom-cua-ban",
+    goButton: "VÃ o",
+    landingHint: "KhÃ´ng cáº§n ÄÄng nháº­p. GÃµ má»t tÃªn phÃ²ng báº¥t ká»³ rá»i chia sáº» link ÄÃ³ cho má»i ngÆ°á»i trong nhÃ³m.",
+    copyLink: "Copy link phÃ²ng",
+    copied: "ÄÃ£ copy!",
+    sectionMembers: "1. ThÃ nh viÃªn",
+    peopleCountLabel: "Sá» ngÆ°á»i:",
+    genFieldsBtn: "Táº¡o Ã´ nháº­p tÃªn",
+    saveBulkBtn: "LÆ°u táº¥t cáº£ tÃªn",
+    singleNamePlaceholder: "ThÃªm 1 ngÆ°á»i...",
+    addBtn: "ThÃªm",
+    sectionAddExpense: "2. ThÃªm chi tiÃªu",
+    descLabel: "MÃ´ táº£",
+    descPlaceholder: "Än tá»i, xÄng xe, ...",
+    amountLabel: "Sá» tiá»n",
+    paidByLabel: "Tráº£ bá»i",
+    paidBySelectDefault: "-- chá»n ngÆ°á»i --",
+    participantsLabel: "Chia cho ai (tick ngÆ°á»i tham gia, nháº­p sá» pháº§n):",
+    splitModeShares: "Theo pháº§n",
+    splitModeAmount: "Theo sá» tiá»n",
+    evenSplitBtn: "Chia Äá»u",
+    splitExact: "â ÄÃ£ chia Äá»§, khá»p tá»ng tiá»n",
+    splitShortBy: "CÃ²n thiáº¿u",
+    splitOverBy: "DÆ°",
+    addExpenseBtn: "ThÃªm chi tiÃªu",
+    updateExpenseBtn: "Cáº­p nháº­t chi tiÃªu",
+    cancelEditBtn: "Há»§y",
+    editBtn: "Sá»­a",
+    sectionExpenseList: "3. Danh sÃ¡ch chi tiÃªu",
+    thDesc: "MÃ´ táº£",
+    thAmount: "Sá» tiá»n",
+    thPaidBy: "Tráº£ bá»i",
+    thSplitWith: "Chia cho",
+    deleteBtn: "XoÃ¡",
+    sectionBalances: "4. Sá» dÆ°",
+    sectionBreakdown: "5. Chi tiáº¿t theo ngÆ°á»i",
+    sectionSettlements: "6. Cáº¥n trá»« ná»£",
+    sectionExport: "7. Xuáº¥t káº¿t quáº£",
+    copySummaryBtn: "Copy tá»ng káº¿t",
+    downloadPdfBtn: "Táº£i file PDF",
+    noSettlements: "KhÃ´ng cáº§n chuyá»n tiá»n â má»i ngÆ°á»i ÄÃ£ cÃ¢n báº±ng.",
+    balanceSettled: "ÄÃ£ cÃ¢n báº±ng",
+    balanceGets: "ÄÆ°á»£c nháº­n",
+    balanceOwes: "pháº£i tráº£",
+    settlementPays: "tráº£",
+    noExpensesYet: "chÆ°a tham gia chi tiÃªu nÃ o",
+    noDescription: "(khÃ´ng mÃ´ táº£)",
+    shareUnit: "pháº§n",
+    namePlaceholderPrefix: "NgÆ°á»i",
+    donateHeading: "á»¦ng há» tÃ¡c giáº£ má»t ly cÃ  phÃª",
+    donateHint: "QuÃ©t mÃ£ QR Äá» donate â cáº£m Æ¡n báº¡n ÄÃ£ á»§ng há»!",
+    lockedTitle: "PhÃ²ng nÃ y ÄÃ£ bá» khÃ³a",
+    lockedSubtitle: "Nháº­p PIN Äá» xem phÃ²ng nÃ y",
+    pinPlaceholder: "PIN",
+    unlockBtn: "Má» khÃ³a",
+    lockRoomBtn: "KhÃ³a phÃ²ng",
+    removeLockBtn: "Bá» khÃ³a",
+    enterPinToUnlock: "Nháº­p PIN Äá» bá» khÃ³a phÃ²ng:",
+    setPinToLock: "Äáº·t PIN 4-6 sá» Äá» khÃ³a phÃ²ng:",
+    NAME_REQUIRED: "Cáº§n nháº­p tÃªn",
+    PERSON_HAS_EXPENSES: "NgÆ°á»i nÃ y ÄÃ£ cÃ³ giao dá»ch, khÃ´ng thá» xoÃ¡.",
+    AMOUNT_INVALID: "Sá» tiá»n khÃ´ng há»£p lá»",
+    AMOUNT_MUST_BE_POSITIVE: "Sá» tiá»n pháº£i lá»n hÆ¡n 0",
+    NEED_PAYER_AND_PARTICIPANTS: "Cáº§n chá»n ngÆ°á»i tráº£ vÃ  ngÆ°á»i tham gia",
+    SHARES_INVALID: "Sá» pháº§n khÃ´ng há»£p lá»",
+    SHARES_MUST_BE_POSITIVE: "Sá» pháº§n pháº£i lá»n hÆ¡n 0",
+    AMOUNTS_MUST_SUM_TO_TOTAL: "Sá» tiá»n chia cho tá»«ng ngÆ°á»i pháº£i cá»ng láº¡i ÄÃºng báº±ng tá»ng sá» tiá»n",
+    WRONG_PIN: "Sai PIN",
+    PIN_INVALID: "PIN pháº£i cÃ³ 4-6 sá»",
+    NOT_LOCKED: "PhÃ²ng nÃ y chÆ°a bá» khÃ³a",
+    ROOM_LOCKED: "PhÃ²ng nÃ y ÄÃ£ bá» khÃ³a",
+    MESSAGE_REQUIRED: "Báº¡n chÆ°a viáº¿t gÃ¬ cáº£",
+    GENERIC_ERROR: "CÃ³ lá»i xáº£y ra",
+    feedbackBtn: "GÃ³p Ã½",
+    feedbackPrompt: "Báº¡n muá»n gÃ³p Ã½ gÃ¬? (lá»i, Äá» xuáº¥t, báº¥t ká»³ Äiá»u gÃ¬)",
+    feedbackThanks: "Cáº£m Æ¡n gÃ³p Ã½ cá»§a báº¡n!",
+  },
+};
+
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const urlLang = params.get('lang');
+  if (urlLang && translations[urlLang]) {
+    localStorage.setItem('lang', urlLang);
+    params.delete('lang');
+    const rest = params.toString();
+    const cleanUrl = window.location.pathname + (rest ? '?' + rest : '') + window.location.hash;
+    window.history.replaceState(null, '', cleanUrl);
+  }
+})();
+
+function currentLang() {
+  const saved = localStorage.getItem('lang');
+  return translations[saved] ? saved : 'en';
+}
+
+const CURRENCIES = {
+  VND: { symbol: 'Ä', decimals: 0, position: 'suffix', locale: 'vi-VN' },
+  USD: { symbol: '$', decimals: 2, position: 'prefix', locale: 'en-US' },
+  EUR: { symbol: 'â¬', decimals: 2, position: 'suffix', locale: 'de-DE' },
+  JPY: { symbol: 'Â¥', decimals: 0, position: 'prefix', locale: 'ja-JP' },
+  KRW: { symbol: 'â©', decimals: 0, position: 'prefix', locale: 'ko-KR' },
+  GBP: { symbol: 'Â£', decimals: 2, position: 'prefix', locale: 'en-GB' },
+};
+const LANG_DEFAULT_CURRENCY = { vi: 'VND', en: 'USD' };
+
+function currentCurrency() {
+  const explicit = localStorage.getItem('currency');
+  if (explicit && CURRENCIES[explicit]) return explicit;
+  return LANG_DEFAULT_CURRENCY[currentLang()] || 'USD';
+}
+
+function formatCurrency(amount) {
+  const cfg = CURRENCIES[currentCurrency()];
+  const num = amount.toLocaleString(cfg.locale, {
+    minimumFractionDigits: cfg.decimals,
+    maximumFractionDigits: cfg.decimals,
+  });
+  return cfg.position === 'prefix' ? `${cfg.symbol}${num}` : `${num} ${cfg.symbol}`;
+}
+
+function syncCurrencySelect() {
+  const sel = document.getElementById('currencySelect');
+  if (!sel) return;
+  if (!sel.options.length) {
+    Object.keys(CURRENCIES).forEach((code) => {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = `${CURRENCIES[code].symbol} ${code}`;
+      sel.appendChild(opt);
+    });
+  }
+  sel.value = currentCurrency();
+}
+
+function setCurrency(code) {
+  if (!CURRENCIES[code]) return;
+  localStorage.setItem('currency', code);
+  syncCurrencySelect();
+  document.dispatchEvent(new CustomEvent('currencychange'));
+}
+
+function t(key) {
+  const lang = currentLang();
+  return (translations[lang] && translations[lang][key]) || translations.en[key] || key;
+}
+
+function applyTranslations() {
+  document.documentElement.setAttribute('lang', currentLang());
+
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+
+  const room = document.body.dataset.room;
+  document.title = room ? `${room} - ${t('appTitle')}` : t('appTitle');
+
+  const btn = document.getElementById('langToggle');
+  if (btn) btn.textContent = currentLang() === 'en' ? 'VI' : 'EN';
+
+  syncCurrencySelect();
+}
+
+function setLang(lang) {
+  localStorage.setItem('lang', lang);
+  applyTranslations();
+  document.dispatchEvent(new CustomEvent('langchange'));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  applyTranslations();
+  const langBtn = document.getElementById('langToggle');
+  if (langBtn) {
+    langBtn.addEventListener('click', () => setLang(currentLang() === 'en' ? 'vi' : 'en'));
+  }
+  const currencySel = document.getElementById('currencySelect');
+  if (currencySel) {
+    currencySel.addEventListener('change', () => setCurrency(currencySel.value));
+  }
+});
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: static/theme.js @@@@@
+(function () {
+  function apply(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    const toggle = document.getElementById('themeToggle');
+    if (toggle) toggle.checked = theme === 'dark';
+  }
+
+  const saved = localStorage.getItem('theme')
+    || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  apply(saved);
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('themeToggle');
+    if (!toggle) return;
+    toggle.checked = document.documentElement.getAttribute('data-theme') === 'dark';
+    toggle.addEventListener('change', () => apply(toggle.checked ? 'dark' : 'light'));
+  });
+})();
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: static/feedback.js @@@@@
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('feedbackBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const message = prompt(t('feedbackPrompt'));
+    if (!message || !message.trim()) return;
+
+    const roomSlug = document.body.dataset.room || null;
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message.trim(), room_slug: roomSlug }),
+      });
+      if (!res.ok) throw new Error('failed');
+      alert(t('feedbackThanks'));
+    } catch (err) {
+      alert(t('GENERIC_ERROR'));
+    }
+  });
+});
+
+@@@@@ END FILE @@@@@
+
+@@@@@ FILE: static/qr-placeholder.jpg @@@@@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect x="1" y="1" width="198" height="198" rx="10" fill="#f0f1f4" stroke="#c7cad3" stroke-width="2" stroke-dasharray="6 5"/>
+  <g fill="none" stroke="#9aa0ad" stroke-width="6">
+    <rect x="24" y="24" width="36" height="36" rx="4"/>
+    <rect x="140" y="24" width="36" height="36" rx="4"/>
+    <rect x="24" y="140" width="36" height="36" rx="4"/>
+  </g>
+  <text x="100" y="106" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#6b7280">YOUR QR</text>
+  <text x="100" y="124" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#6b7280">HERE</text>
+</svg>
+
+@@@@@ END FILE @@@@@
+

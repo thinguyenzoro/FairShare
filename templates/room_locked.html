@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ room_slug }} - FairShare</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
+</head>
+<body data-room="{{ room_slug }}">
+<div class="theme-toggle-row">
+  <button id="langToggle" type="button" class="lang-toggle">VI</button>
+  <label class="theme-switch">
+    <input type="checkbox" id="themeToggle">
+    <span class="slider"></span>
+  </label>
+</div>
+<div class="landing">
+  <h1 data-i18n="lockedTitle">This room is locked</h1>
+  <p class="subtitle" data-i18n="lockedSubtitle">Enter the PIN to view this room</p>
+  <form id="pinForm" class="landing-form">
+    <input id="pinInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" autofocus data-i18n-placeholder="pinPlaceholder" placeholder="PIN">
+    <button type="submit" data-i18n="unlockBtn">Unlock</button>
+  </form>
+  <p id="pinError" class="error"></p>
+</div>
+<script>
+  const roomSlug = {{ room_slug | tojson }};
+  const form = document.getElementById('pinForm');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pin = document.getElementById('pinInput').value.trim();
+    const errorEl = document.getElementById('pinError');
+    errorEl.textContent = '';
+
+    const res = await fetch(`/${roomSlug}/api/unlock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errorEl.textContent = t(data.error) || t('GENERIC_ERROR');
+      return;
+    }
+    window.location.reload();
+  });
+</script>
+
+<button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
+</body>
+</html>
+

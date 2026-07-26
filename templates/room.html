@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ room_slug }} - FairShare</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') }}"></script>
+</head>
+<body data-room="{{ room_slug }}">
+<header class="room-header">
+  <h1>{{ room_slug }}</h1>
+  <div class="room-header-actions">
+    <button id="langToggle" type="button" class="lang-toggle">VI</button>
+    <select id="currencySelect" class="currency-select"></select>
+    <label class="theme-switch">
+      <input type="checkbox" id="themeToggle">
+      <span class="slider"></span>
+    </label>
+    <button id="lockToggleBtn" type="button" class="header-btn"></button>
+    <button id="copyLinkBtn" type="button" class="header-btn" data-i18n="copyLink">Copy room link</button>
+  </div>
+</header>
+
+<main class="room-main">
+
+  <section class="card">
+    <h2 data-i18n="sectionMembers">1. Members</h2>
+    <div class="bulk-add">
+      <label><span data-i18n="peopleCountLabel">Number of people:</span> <input id="peopleCount" type="number" min="1" max="50" value="8"></label>
+      <button id="genFieldsBtn" type="button" data-i18n="genFieldsBtn">Generate name fields</button>
+    </div>
+    <div id="bulkFields" class="bulk-fields"></div>
+    <button id="saveBulkBtn" type="button" class="hidden" data-i18n="saveBulkBtn">Save all names</button>
+
+    <div class="single-add">
+      <input id="singleNameInput" type="text" data-i18n-placeholder="singleNamePlaceholder" placeholder="Add one person...">
+      <button id="addPersonBtn" type="button" data-i18n="addBtn">Add</button>
+    </div>
+
+    <ul id="peopleList" class="people-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionAddExpense">2. Add expense</h2>
+    <form id="expenseForm">
+      <label><span data-i18n="descLabel">Description</span> <input id="expDesc" type="text" data-i18n-placeholder="descPlaceholder" placeholder="Dinner, gas, ..."></label>
+      <label><span id="amountLabelText">Amount</span> <input id="expAmount" type="number" min="0" step="any" required></label>
+      <label><span data-i18n="paidByLabel">Paid by</span>
+        <select id="expPaidBy" required></select>
+      </label>
+
+      <div>
+        <p class="label-like" data-i18n="participantsLabel">Split with (check participants, enter shares):</p>
+        <div class="split-mode-toggle">
+          <button type="button" id="modeSharesBtn" class="mode-btn active" data-i18n="splitModeShares">By shares</button>
+          <button type="button" id="modeAmountBtn" class="mode-btn" data-i18n="splitModeAmount">By exact amount</button>
+        </div>
+        <div id="participantsBox" class="participants-box"></div>
+        <div id="splitStatus" class="split-status hidden"></div>
+        <button type="button" id="evenSplitBtn" class="hidden secondary-btn small-btn" data-i18n="evenSplitBtn">Split evenly</button>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" id="expenseSubmitBtn" data-i18n="addExpenseBtn">Add expense</button>
+        <button type="button" id="cancelEditBtn" class="hidden secondary-btn" data-i18n="cancelEditBtn">Cancel</button>
+      </div>
+      <p id="expenseError" class="error"></p>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionExpenseList">3. Expense list</h2>
+    <div class="table-scroll">
+      <table class="expense-table">
+        <thead><tr>
+          <th data-i18n="thDesc">Description</th>
+          <th data-i18n="thAmount">Amount</th>
+          <th data-i18n="thPaidBy">Paid by</th>
+          <th data-i18n="thSplitWith">Split with</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="expenseTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionBalances">4. Balances</h2>
+    <ul id="balancesList" class="balances-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionBreakdown">5. Breakdown per person</h2>
+    <ul id="breakdownList" class="breakdown-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionSettlements">6. Settlement</h2>
+    <ul id="settlementsList" class="settlements-list"></ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="sectionExport">7. Export summary</h2>
+    <textarea id="summaryText" class="summary-text" rows="10" readonly></textarea>
+    <div class="export-actions">
+      <button id="copySummaryBtn" type="button" data-i18n="copySummaryBtn">Copy summary</button>
+      <button id="downloadPdfBtn" type="button" class="secondary-btn" data-i18n="downloadPdfBtn">Download PDF</button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="donate-footer">
+  <p data-i18n="donateHeading">Buy the author a coffee</p>
+  <img src="{{ url_for('static', filename='qr-placeholder.jpg') }}" alt="Donate QR code" class="donate-qr">
+  <p class="hint" data-i18n="donateHint">Scan the QR code to donate â thank you for the support!</p>
+</footer>
+
+<button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
+
+<script src="{{ url_for('static', filename='room.js') }}"></script>
+<script src="{{ url_for('static', filename='feedback.js') }}"></script>
+</body>
+</html>
+
