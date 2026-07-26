@@ -2,8 +2,6 @@
 
 **FairShare** is a lightweight, privacy-friendly, and modern web application to split expenses with friends and groups without requiring any login or registration.
 
-![FairShare Banner](static/qr-placeholder.jpg)
-
 ## ✨ Features
 - 🚀 **No Login Required**: Simply create or type any room name and share the link with your group.
 - 🧮 **Flexible Expense Splitting**: Split equally or by exact custom amounts/shares.
@@ -28,8 +26,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/fairshare.git
-cd fairshare
+git clone https://github.com/thinguyenzoro/FairShare.git
+cd FairShare
 
 # Start the application
 docker compose up --build -d
@@ -63,6 +61,16 @@ To deploy FairShare on an Ubuntu / Debian VPS with Docker:
 chmod +x deploy.sh
 ./deploy.sh
 ```
+
+---
+
+## ☕ Support / Donate
+
+If you find **FairShare** helpful, buy the author a coffee!
+
+<p align="center">
+  <img src="static/qr-placeholder.jpg" alt="Donate QR Code" width="220">
+</p>
 
 ---
 
