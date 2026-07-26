@@ -201,7 +201,13 @@ function currentCurrency() {
 }
 
 function formatCurrency(amount) {
-  const cfg = CURRENCIES[currentCurrency()];
+  const code = currentCurrency();
+  const cfg = CURRENCIES[code];
+  if (code === "VND") {
+    const rounded = Math.round(amount);
+    const spaced = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return `${spaced} đ`;
+  }
   const num = amount.toLocaleString(cfg.locale, {
     minimumFractionDigits: cfg.decimals,
     maximumFractionDigits: cfg.decimals,

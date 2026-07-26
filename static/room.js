@@ -1,3 +1,10 @@
+
+function getExpAmountValue() {
+  const el = document.getElementById("expAmount");
+  if (!el) return 0;
+  const raw = el.value.replace(/\s/g, "").replace(",", ".");
+  return parseFloat(raw) || 0;
+}
 const room = document.body.dataset.room;
 const apiBase = `/${room}/api`;
 
@@ -131,7 +138,7 @@ function updateSplitStatus() {
   evenBtn.classList.remove("hidden");
   statusEl.classList.remove("hidden");
 
-  const target = parseFloat(document.getElementById("expAmount").value) || 0;
+  const target = getExpAmountValue();
   let allocated = 0;
   document.querySelectorAll(".participant-check").forEach((c) => {
     if (c.checked) {
@@ -156,7 +163,7 @@ function updateSplitStatus() {
 function splitEvenly() {
   const decimals = CURRENCIES[currentCurrency()].decimals;
   const multiplier = Math.pow(10, decimals);
-  const targetUnits = Math.round((parseFloat(document.getElementById("expAmount").value) || 0) * multiplier);
+  const targetUnits = Math.round(getExpAmountValue() * multiplier);
   const checks = Array.from(document.querySelectorAll(".participant-check")).filter((c) => c.checked);
   if (checks.length === 0) return;
 
@@ -300,7 +307,8 @@ function startEditExpense(expense) {
 
   document.getElementById("expenseError").textContent = "";
   document.getElementById("expDesc").value = expense.description || "";
-  document.getElementById("expAmount").value = expense.amount;
+  const formattedAmt = currentCurrency() === "VND" ? Math.round(expense.amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") : expense.amount;
+  document.getElementById("expAmount").value = formattedAmt;
   document.getElementById("expPaidBy").value = expense.paid_by;
 
   setSplitMode("shares");
@@ -459,7 +467,19 @@ const evenSplitBtn = document.getElementById("evenSplitBtn");
 if (evenSplitBtn) evenSplitBtn.addEventListener("click", splitEvenly);
 
 const expAmount = document.getElementById("expAmount");
-if (expAmount) expAmount.addEventListener("input", updateSplitStatus);
+if (expAmount) {
+  expAmount.addEventListener("input", (e) => {
+    let clean = e.target.value.replace(/[^\d.,]/g, "");
+    if (clean) {
+      const parts = clean.split(/[.,]/);
+      const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+      e.target.value = parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
+    } else {
+      e.target.value = "";
+    }
+    updateSplitStatus();
+  });
+}
 
 const expenseForm = document.getElementById("expenseForm");
 if (expenseForm) {
@@ -469,7 +489,7 @@ if (expenseForm) {
     errorEl.textContent = "";
 
     const description = document.getElementById("expDesc").value.trim();
-    const amount = document.getElementById("expAmount").value;
+    const amount = getExpAmountValue();
     const paidBy = document.getElementById("expPaidBy").value;
 
     if (!paidBy) {

@@ -58,6 +58,9 @@ def _fmt_shares(n):
 
 
 def _fmt(amount, currency="VND"):
+    if currency == "VND":
+        spaced = f"{round(amount):,}".replace(",", " ")
+        return f"{spaced} đ"
     cfg = CURRENCIES.get(currency, CURRENCIES["VND"])
     if cfg["decimals"] > 0:
         num = f"{amount:,.{cfg['decimals']}f}"
