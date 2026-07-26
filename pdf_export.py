@@ -25,17 +25,17 @@ STRINGS = {
         "shareUnit": "share(s)",
     },
     "vi": {
-        "appTitle": "Chia Tiá»n",
+        "appTitle": "FairShare",
         "sectionExpenseList": "Danh sách chi tiêu",
-        "sectionBreakdown": "Chi tiáº¿t theo ngÆ°á»i (vÃ¬ sao phải trả sá» tiá»n nÃ y)",
-        "sectionBalances": "Sá» dÆ°",
+        "sectionBreakdown": "Chi tiết theo người (vì sao phải trả số tiền này)",
+        "sectionBalances": "Số dư",
         "sectionSettlements": "Cấn trừ nợ",
-        "paidBy": "Tráº£ bá»i",
-        "balanceGets": "ÄÆ°á»£c nháº­n",
+        "paidBy": "Trả bởi",
+        "balanceGets": "được nhận",
         "balanceOwes": "phải trả",
-        "balanceSettled": "ÄÃ£ cÃ¢n báº±ng",
+        "balanceSettled": "đã cân bằng",
         "settlementPays": "trả",
-        "noSettlements": "KhÃ´ng cáº§n chuyá»n tiá»n - má»i ngÆ°á»i ÄÃ£ cÃ¢n báº±ng.",
+        "noSettlements": "Không cần chuyển tiền - mọi người đã cân bằng.",
         "noExpenses": "Chưa có chi tiêu nào.",
         "noDescription": "(không mô tả)",
         "noParticipation": "chưa tham gia chi tiêu nào",
@@ -44,11 +44,11 @@ STRINGS = {
 }
 
 CURRENCIES = {
-    "VND": {"symbol": "Ä", "decimals": 0, "position": "suffix", "euro_style": True},
+    "VND": {"symbol": "đ", "decimals": 0, "position": "suffix", "euro_style": True},
     "USD": {"symbol": "$", "decimals": 2, "position": "prefix", "euro_style": False},
-    "EUR": {"symbol": "â¬", "decimals": 2, "position": "suffix", "euro_style": True},
+    "EUR": {"symbol": "€", "decimals": 2, "position": "suffix", "euro_style": True},
     "JPY": {"symbol": "¥", "decimals": 0, "position": "prefix", "euro_style": False},
-    "KRW": {"symbol": "â©", "decimals": 0, "position": "prefix", "euro_style": False},
+    "KRW": {"symbol": "₩", "decimals": 0, "position": "prefix", "euro_style": False},
     "GBP": {"symbol": "£", "decimals": 2, "position": "prefix", "euro_style": False},
 }
 
@@ -75,17 +75,17 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
 
     pdf = FPDF()
     pdf.add_page()
-    pdf.add_font("Segoe", "", FONT_PATH)
+    pdf.add_font("Roboto", "", FONT_PATH)
 
     def line(height, text):
         pdf.multi_cell(0, height, text, **_LINE_KWARGS)
 
     def section_title(text):
-        pdf.set_font("Segoe", "", 13)
+        pdf.set_font("Roboto", "", 13)
         line(8, text)
-        pdf.set_font("Segoe", "", 11)
+        pdf.set_font("Roboto", "", 11)
 
-    pdf.set_font("Segoe", "", 16)
+    pdf.set_font("Roboto", "", 16)
     line(10, f"{room_slug} - {s['appTitle']}")
     pdf.ln(2)
 
@@ -96,19 +96,25 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
         for e in state["expenses"]:
             payer = name_by_id.get(e["paid_by"], "?")
             desc = e["description"] or s["noDescription"]
-            line(6, f"- {desc}: {fmt(e['amount'])} ({s['paidBy']} {payer})")
+            paid_text = s["paidBy"]
+            amount_text = fmt(e["amount"])
+            line(6, f"- {desc}: {amount_text} ({paid_text} {payer})")
     pdf.ln(3)
 
     section_title(s["sectionBreakdown"])
     for b in state["breakdown"]:
         if not b["items"]:
-            line(6, f"- {b['name']}: {s['noParticipation']}")
+            b_name = b["name"]
+            no_part = s["noParticipation"]
+            line(6, f"- {b_name}: {no_part}")
             continue
         parts = " + ".join(
             f"{i['description'] or s['noDescription']} {fmt(i['owed'])} ({_fmt_shares(i['shares'])} {s['shareUnit']})"
             for i in b["items"]
         )
-        line(6, f"- {b['name']}: {parts} = {fmt(b['total'])}")
+        b_name = b["name"]
+        total_text = fmt(b["total"])
+        line(6, f"- {b_name}: {parts} = {total_text}")
     pdf.ln(3)
 
     section_title(s["sectionBalances"])
@@ -119,7 +125,8 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
             text = f"{s['balanceOwes']} {fmt(-b['balance'])}"
         else:
             text = s["balanceSettled"]
-        line(6, f"- {b['name']}: {text}")
+        b_name = b["name"]
+        line(6, f"- {b_name}: {text}")
     pdf.ln(3)
 
     section_title(s["sectionSettlements"])
@@ -127,7 +134,10 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
         line(6, s["noSettlements"])
     else:
         for st in state["settlements"]:
-            line(6, f"- {st['from_name']} {s['settlementPays']} {st['to_name']}: {fmt(st['amount'])}")
+            from_name = st["from_name"]
+            to_name = st["to_name"]
+            pays_text = s["settlementPays"]
+            amount_text = fmt(st["amount"])
+            line(6, f"- {from_name} {pays_text} {to_name}: {amount_text}")
 
     return bytes(pdf.output())
-
