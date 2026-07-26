@@ -189,12 +189,12 @@ function currentLang() {
 }
 
 const CURRENCIES = {
-  VND: { symbol: 'Ä', decimals: 0, position: 'suffix', locale: 'vi-VN' },
-  USD: { symbol: '$', decimals: 2, position: 'prefix', locale: 'en-US' },
-  EUR: { symbol: 'â¬', decimals: 2, position: 'suffix', locale: 'de-DE' },
-  JPY: { symbol: ¥, decimals: 0, position: 'prefix', locale: 'ja-JP' },
-  KRW: { symbol: 'â©', decimals: 0, position: 'prefix', locale: 'ko-KR' },
-  GBP: { symbol: £, decimals: 2, position: 'prefix', locale: 'en-GB' },
+  VND: { symbol: "đ", decimals: 0, position: "suffix", locale: "vi-VN" },
+  USD: { symbol: "$", decimals: 2, position: "prefix", locale: "en-US" },
+  EUR: { symbol: "€", decimals: 2, position: "suffix", locale: "de-DE" },
+  JPY: { symbol: "¥", decimals: 0, position: "prefix", locale: "ja-JP" },
+  KRW: { symbol: "₩", decimals: 0, position: "prefix", locale: "ko-KR" },
+  GBP: { symbol: "£", decimals: 2, position: "prefix", locale: "en-GB" },
 };
 const LANG_DEFAULT_CURRENCY = { vi: 'VND', en: 'USD' };
 
