@@ -4,7 +4,7 @@ from fpdf import FPDF
 
 _LINE_KWARGS = {"new_x": "LMARGIN", "new_y": "NEXT"}
 
-FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "fonts", "segoeui.ttf")
+FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "fonts", "roboto.ttf")
 
 STRINGS = {
     "en": {
