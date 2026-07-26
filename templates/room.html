@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <title>{{ room_slug }} - FairShare</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') + '?v=5' }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') + '?v=6' }}">
 <script src="{{ url_for('static', filename='theme.js') }}"></script>
-<script src="{{ url_for('static', filename='i18n.js') + '?v=5' }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') + '?v=6' }}"></script>
 </head>
 <body data-room="{{ room_slug }}">
 <header class="room-header">
@@ -126,7 +126,9 @@
   <p data-i18n="donateHeading">Buy the author a coffee</p>
   <img src="{{ url_for('static', filename='qr-placeholder.jpg') }}" alt="Donate QR code" class="donate-qr">
   <p class="hint" data-i18n="donateHint">Scan the QR code to donate â thank you for the support!</p>
-  <p class="github-footer-link" style="margin-top: 16px;"><a href="https://github.com/thinguyenzoro/FairShare" target="_blank" rel="noopener noreferrer" style="color: var(--muted); text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px;">⭐ View & Contribute on GitHub</a></p>
+  <p class="github-footer-link" style="margin-top: 16px;">
+  <a href="https://github.com/thinguyenzoro/FairShare" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: underline; font-size: 0.95rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;" data-i18n="githubFooterLink">⭐ Open Source trên GitHub — Bạn muốn đóng góp hoặc tạo PR? Bấm vào đây!</a>
+</p>
 </footer>
 
 <div id="lightboxModal" class="lightbox-modal hidden">
@@ -136,7 +138,7 @@
 
 <button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
 
-<script src="{{ url_for('static', filename='room.js') + '?v=5' }}"></script>
+<script src="{{ url_for('static', filename='room.js') + '?v=6' }}"></script>
 <script src="{{ url_for('static', filename='feedback.js') }}"></script>
 </body>
 </html>

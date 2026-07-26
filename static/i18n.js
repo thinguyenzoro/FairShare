@@ -80,7 +80,8 @@ const translations = {
     ROOM_LOCKED: "Room is locked",
     MESSAGE_REQUIRED: "Message cannot be empty",
     GENERIC_ERROR: "Something went wrong",
-    feedbackBtn: "Feedback",
+        feedbackBtn: "Feedback",
+    githubFooterLink: "⭐ Open Source on GitHub — Want to contribute or create a PR? Click here!",
   },
   vi: {
     appTitle: "FairShare",
@@ -163,7 +164,8 @@ const translations = {
     ROOM_LOCKED: "Phòng này đã bị khóa",
     MESSAGE_REQUIRED: "Bạn chưa viết gì cả",
     GENERIC_ERROR: "Có lỗi xảy ra",
-    feedbackBtn: "Góp ý",
+        feedbackBtn: "Góp ý",
+    githubFooterLink: "⭐ Open Source trên GitHub — Bạn muốn đóng góp hoặc tạo PR? Bấm vào đây!",
   },
 };
 
