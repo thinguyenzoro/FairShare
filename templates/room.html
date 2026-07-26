@@ -51,6 +51,14 @@
       <label><span data-i18n="paidByLabel">Paid by</span>
         <select id="expPaidBy" required></select>
       </label>
+      <label>
+        <span data-i18n="billImageLabel">Bill receipt image (optional):</span>
+        <input id="expImageInput" type="file" accept="image/*">
+      </label>
+      <div id="imagePreviewContainer" class="hidden" style="margin: 4px 0;">
+        <img id="imagePreview" src="" alt="Bill preview" style="max-width: 120px; max-height: 120px; border-radius: 6px; border: 1px solid var(--border); object-fit: cover;">
+        <button id="removeImageBtn" type="button" class="secondary-btn small-btn" style="vertical-align: top; margin-left: 8px;">✕</button>
+      </div>
 
       <div>
         <p class="label-like" data-i18n="participantsLabel">Split with (check participants, enter shares):</p>
@@ -80,6 +88,7 @@
           <th data-i18n="thAmount">Amount</th>
           <th data-i18n="thPaidBy">Paid by</th>
           <th data-i18n="thSplitWith">Split with</th>
+          <th data-i18n="thBill">Bill</th>
           <th></th>
         </tr></thead>
         <tbody id="expenseTableBody"></tbody>
@@ -119,6 +128,11 @@
   <p class="hint" data-i18n="donateHint">Scan the QR code to donate â thank you for the support!</p>
   <p class="github-footer-link" style="margin-top: 16px;"><a href="https://github.com/thinguyenzoro/FairShare" target="_blank" rel="noopener noreferrer" style="color: var(--muted); text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px;">⭐ View & Contribute on GitHub</a></p>
 </footer>
+
+<div id="lightboxModal" class="lightbox-modal hidden">
+  <span id="closeLightbox" class="lightbox-close">&times;</span>
+  <img id="lightboxImg" class="lightbox-content" alt="Enlarged Bill">
+</div>
 
 <button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
 

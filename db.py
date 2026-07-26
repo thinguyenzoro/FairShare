@@ -23,8 +23,10 @@ CREATE TABLE IF NOT EXISTS expenses (
     description TEXT,
     amount REAL NOT NULL,
     paid_by INTEGER NOT NULL REFERENCES people(id),
+    image_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 
 CREATE TABLE IF NOT EXISTS expense_shares (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,6 +58,11 @@ def init_db():
     conn.commit()
     try:
         conn.execute("ALTER TABLE rooms ADD COLUMN pin_hash TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    try:
+        conn.execute("ALTER TABLE expenses ADD COLUMN image_url TEXT")
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
@@ -125,7 +132,7 @@ def delete_person(room_id, person_id):
 def list_expenses(room_id):
     conn = get_conn()
     expenses = conn.execute(
-        "SELECT id, description, amount, paid_by, created_at FROM expenses WHERE room_id = ? ORDER BY id",
+        "SELECT id, description, amount, paid_by, image_url, created_at FROM expenses WHERE room_id = ? ORDER BY id",
         (room_id,),
     ).fetchall()
     result = []
@@ -140,11 +147,11 @@ def list_expenses(room_id):
     return result
 
 
-def add_expense(room_id, description, amount, paid_by, participants):
+def add_expense(room_id, description, amount, paid_by, participants, image_url=None):
     conn = get_conn()
     cur = conn.execute(
-        "INSERT INTO expenses (room_id, description, amount, paid_by) VALUES (?, ?, ?, ?)",
-        (room_id, description, amount, paid_by),
+        "INSERT INTO expenses (room_id, description, amount, paid_by, image_url) VALUES (?, ?, ?, ?, ?)",
+        (room_id, description, amount, paid_by, image_url),
     )
     expense_id = cur.lastrowid
     for p in participants:
@@ -157,12 +164,18 @@ def add_expense(room_id, description, amount, paid_by, participants):
     return expense_id
 
 
-def update_expense(room_id, expense_id, description, amount, paid_by, participants):
+def update_expense(room_id, expense_id, description, amount, paid_by, participants, image_url=None):
     conn = get_conn()
-    conn.execute(
-        "UPDATE expenses SET description = ?, amount = ?, paid_by = ? WHERE id = ? AND room_id = ?",
-        (description, amount, paid_by, expense_id, room_id),
-    )
+    if image_url is not None:
+        conn.execute(
+            "UPDATE expenses SET description = ?, amount = ?, paid_by = ?, image_url = ? WHERE id = ? AND room_id = ?",
+            (description, amount, paid_by, image_url, expense_id, room_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE expenses SET description = ?, amount = ?, paid_by = ? WHERE id = ? AND room_id = ?",
+            (description, amount, paid_by, expense_id, room_id),
+        )
     conn.execute("DELETE FROM expense_shares WHERE expense_id = ?", (expense_id,))
     for p in participants:
         conn.execute(

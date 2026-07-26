@@ -1,8 +1,10 @@
 import os
 import re
 import secrets
+import uuid
 
-from flask import Flask, Response, jsonify, render_template, request, session
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
+from PIL import Image, ImageOps
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
@@ -15,6 +17,18 @@ SLUG_RE = re.compile(r"^[a-zA-Z0-9\-_]{1,64}$")
 PIN_RE = re.compile(r"^\d{4,6}$")
 
 SECRET_KEY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "secret_key.txt")
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uploads")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "heic", "gif"}
+
+
+def _allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.get("/uploads/<path:filename>")
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
 
 
 def _load_secret_key():
@@ -127,12 +141,53 @@ def _parse_expense_payload(data):
         if abs(total_allocated - amount) > 0.005:
             return None, ("AMOUNTS_MUST_SUM_TO_TOTAL", 400)
 
+    image_url = data.get("image_url")
+    if image_url and not isinstance(image_url, str):
+        image_url = None
+
     return {
         "description": description,
         "amount": amount,
         "paid_by": paid_by,
         "participants": clean_participants,
+        "image_url": image_url,
     }, None
+
+
+@app.post("/<room_slug>/api/upload-bill")
+def api_upload_bill(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+
+    if "bill" not in request.files:
+        return jsonify({"error": "NO_FILE"}), 400
+    file = request.files["bill"]
+    if not file or not file.filename or not _allowed_file(file.filename):
+        return jsonify({"error": "INVALID_FILE_TYPE"}), 400
+
+    try:
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        img = Image.open(file.stream)
+        img = ImageOps.exif_transpose(img)
+
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # Resize image to max 1200x1200px
+        img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+
+        filename = f"{uuid.uuid4().hex}.jpg"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        # Save as JPEG with 75% quality & optimization
+        img.save(filepath, "JPEG", quality=75, optimize=True)
+
+        return jsonify({"ok": True, "image_url": f"/uploads/{filename}"})
+    except Exception as e:
+        return jsonify({"error": f"UPLOAD_FAILED: {str(e)}"}), 500
+
 
 
 def _build_state(room):

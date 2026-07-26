@@ -289,6 +289,9 @@ function startEditExpense(expense) {
 
 function cancelEditExpense() {
   editingExpenseId = null;
+  currentImageUrl = null;
+  document.getElementById("imagePreviewContainer").classList.add("hidden");
+  document.getElementById("expImageInput").value = "";
   document.getElementById('expenseForm').reset();
   document.getElementById('expenseError').textContent = '';
   setSplitMode('shares');
@@ -442,7 +445,7 @@ document.getElementById('expenseForm').addEventListener('submit', async (e) => {
   const res = await fetch(url, {
     method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description, amount, paid_by: parseInt(paidBy, 10), participants, split_mode: splitMode }),
+    body: JSON.stringify({ description, amount, paid_by: parseInt(paidBy, 10), participants, split_mode: splitMode, image_url: currentImageUrl }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -528,3 +531,73 @@ document.addEventListener('currencychange', () => render());
 
 loadState();
 
+
+
+// ---- Bill Image Upload & Lightbox ----
+
+const expImageInput = document.getElementById("expImageInput");
+const removeImageBtn = document.getElementById("removeImageBtn");
+
+if (expImageInput) {
+  expImageInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const errorEl = document.getElementById("expenseError");
+    errorEl.textContent = t("uploadingBill") || "Uploading bill...";
+
+    const formData = new FormData();
+    formData.append("bill", file);
+
+    try {
+      const res = await fetch(`${apiBase}/upload-bill`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errorEl.textContent = t(data.error) || "Upload failed";
+        return;
+      }
+      errorEl.textContent = "";
+      currentImageUrl = data.image_url;
+      const previewImg = document.getElementById("imagePreview");
+      previewImg.src = currentImageUrl;
+      document.getElementById("imagePreviewContainer").classList.remove("hidden");
+    } catch (err) {
+      errorEl.textContent = "Upload failed";
+    }
+  });
+}
+
+if (removeImageBtn) {
+  removeImageBtn.addEventListener("click", () => {
+    currentImageUrl = null;
+    document.getElementById("imagePreviewContainer").classList.add("hidden");
+    document.getElementById("expImageInput").value = "";
+  });
+}
+
+function openLightbox(src) {
+  const modal = document.getElementById("lightboxModal");
+  const img = document.getElementById("lightboxImg");
+  img.src = src;
+  modal.classList.remove("hidden");
+}
+
+const closeLightboxBtn = document.getElementById("closeLightbox");
+const lightboxModal = document.getElementById("lightboxModal");
+
+if (closeLightboxBtn) {
+  closeLightboxBtn.addEventListener("click", () => {
+    lightboxModal.classList.add("hidden");
+  });
+}
+
+if (lightboxModal) {
+  lightboxModal.addEventListener("click", (e) => {
+    if (e.target === lightboxModal) {
+      lightboxModal.classList.add("hidden");
+    }
+  });
+}
