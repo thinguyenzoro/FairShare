@@ -185,8 +185,11 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
             pdf.set_font("Roboto", "", 10)
             for item in real_items:
                 desc = item['description'] or s['noDescription']
-                shares_str = _fmt_shares(item['shares'])
-                detail = f"   {desc} ({shares_str} {s['shareUnit']})"
+                if item['shares'] == item['owed']:
+                    detail = f"   {desc}"
+                else:
+                    shares_str = _fmt_shares(item['shares'])
+                    detail = f"   {desc} ({shares_str} {s['shareUnit']})"
                 
                 pdf.set_text_color(*MUTED_COLOR)
                 pdf.cell(140, 6, detail, ln=0)

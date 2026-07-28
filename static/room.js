@@ -279,8 +279,8 @@ function renderBreakdown() {
     let itemsHtml = b.items.map(i => {
       const desc = i.description || t("noDescription");
       const amt = fmt(i.owed);
-      const shares = `(${i.shares} ${t("shareUnit")})`;
-      return `<li><span class="bd-desc">${desc}</span><span class="bd-amount">${amt} <small>${shares}</small></span></li>`;
+      const shares = i.shares === i.owed ? "" : ` <small>(${i.shares} ${t("shareUnit")})</small>`;
+      return `<li><span class="bd-desc">${desc}</span><span class="bd-amount">${amt}${shares}</span></li>`;
     }).join("");
 
     li.innerHTML = `
