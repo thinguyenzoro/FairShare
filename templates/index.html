@@ -6,6 +6,12 @@
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
 <meta property="og:url" content="{{ request.url }}">
 <meta property="og:image" content="{{ url_for('static', filename='preview_1200x630.jpg', _external=True) }}">
+<meta property="og:image:url" content="{{ url_for('static', filename='preview_1200x630.jpg', _external=True) }}">
+<meta property="og:image:secure_url" content="{{ url_for('static', filename='preview_1200x630.jpg', _external=True) }}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Splitbill - The simplest way to split group expenses">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="{{ url_for('static', filename='preview_1200x630.jpg', _external=True) }}">
 <meta name="robots" content="noindex, nofollow">
