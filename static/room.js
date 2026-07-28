@@ -127,16 +127,31 @@ function renderPeopleList() {
 
 function renderPaidBySelect() {
   const sel = document.getElementById("expPaidBy");
-  if (!sel) return;
-  const prev = sel.value;
-  sel.innerHTML = `<option value="">${t("paidBySelectDefault")}</option>`;
-  state.people.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.name;
-    sel.appendChild(opt);
-  });
-  if (prev) sel.value = prev;
+  const filterSel = document.getElementById("filterPaidBy");
+  
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">${t("paidBySelectDefault")}</option>`;
+    state.people.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    if (prev) sel.value = prev;
+  }
+  
+  if (filterSel) {
+    const prevFilter = filterSel.value;
+    filterSel.innerHTML = `<option value="">${t("filterAllPayer") || "All Payers"}</option>`;
+    state.people.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      filterSel.appendChild(opt);
+    });
+    if (prevFilter) filterSel.value = prevFilter;
+  }
 }
 
 function renderParticipantsBox() {
@@ -241,7 +256,62 @@ function renderExpenseTable() {
   tbody.innerHTML = "";
   const nameById = Object.fromEntries(state.people.map((p) => [p.id, p.name]));
 
-  state.expenses.forEach((e) => {
+  // Update header icons
+  document.querySelectorAll(".expense-table th.sortable").forEach(th => {
+    const icon = th.querySelector(".sort-icon");
+    if (icon) {
+      if (th.dataset.sort === state.expenseSortColumn) {
+        icon.textContent = state.expenseSortDesc ? "▼" : "▲";
+      } else {
+        icon.textContent = "";
+      }
+    }
+  });
+
+  let sortedExpenses = [...state.expenses];
+
+  // Apply filters
+  const filterCatEl = document.getElementById("filterCategory");
+  const filterPaidByEl = document.getElementById("filterPaidBy");
+  const filterCat = filterCatEl ? filterCatEl.value : "";
+  const filterPaidBy = filterPaidByEl ? filterPaidByEl.value : "";
+  
+  if (filterCat) {
+    sortedExpenses = sortedExpenses.filter(e => (e.category || "general") === filterCat);
+  }
+  if (filterPaidBy) {
+    sortedExpenses = sortedExpenses.filter(e => e.paid_by === filterPaidBy);
+  }
+
+  if (state.expenseSortColumn) {
+    sortedExpenses.sort((a, b) => {
+      let valA = a[state.expenseSortColumn];
+      let valB = b[state.expenseSortColumn];
+      
+      // Handle missing categories
+      if (state.expenseSortColumn === "category") {
+        valA = valA || "general";
+        valB = valB || "general";
+      }
+      
+      // Handle paid_by using names instead of IDs
+      if (state.expenseSortColumn === "paid_by") {
+        valA = nameById[valA] || "";
+        valB = nameById[valB] || "";
+      }
+      // Handle string comparisons
+      if (typeof valA === "string" && typeof valB === "string") {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+      }
+
+      if (valA < valB) return state.expenseSortDesc ? 1 : -1;
+      if (valA > valB) return state.expenseSortDesc ? -1 : 1;
+      return 0;
+    });
+  }
+
+  sortedExpenses.forEach((e) => {
     const tr = document.createElement("tr");
     const participantsText = e.participants
       .map((s) => `${nameById[s.person_id] || "?"} (${s.shares})`)
@@ -251,10 +321,11 @@ function renderExpenseTable() {
       ? `<img src="${e.image_url}" class="bill-thumb" alt="Bill" onclick="openLightbox('${e.image_url}')">`
       : "-";
 
-    const catIcon = getCategoryIcon(e.category);
-    const desc = e.description ? `${catIcon} ${e.description}` : catIcon;
+    const catIcon = getCategoryIcon(e.category || "general");
+    const desc = e.description || t("noDescription");
 
     tr.innerHTML = `
+      <td style="text-align: center; font-size: 1.2rem;" title="${e.category || 'general'}">${catIcon}</td>
       <td>${desc}</td>
       <td>${fmt(e.amount)}</td>
       <td>${nameById[e.paid_by] || "?"}</td>
@@ -917,4 +988,44 @@ if (lightboxModal) {
       lightboxModal.classList.add("hidden");
     }
   });
+}
+
+document.querySelectorAll(".expense-table th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const col = th.dataset.sort;
+    if (state.expenseSortColumn === col) {
+      // Toggle direction or disable sort
+      if (state.expenseSortDesc) {
+        state.expenseSortColumn = null;
+        state.expenseSortDesc = false;
+      } else {
+        state.expenseSortDesc = true;
+      }
+    } else {
+      state.expenseSortColumn = col;
+      state.expenseSortDesc = false; // default to asc
+    }
+    renderExpenseTable();
+  });
+});
+
+function initFilters() {
+  const expCat = document.getElementById("expCategory");
+  const filterCat = document.getElementById("filterCategory");
+  if (expCat && filterCat && filterCat.options.length <= 1) {
+    Array.from(expCat.children).forEach(child => {
+      filterCat.appendChild(child.cloneNode(true));
+    });
+  }
+}
+document.addEventListener("DOMContentLoaded", initFilters);
+
+const filterCategoryEl = document.getElementById("filterCategory");
+if (filterCategoryEl) {
+  filterCategoryEl.addEventListener("change", renderExpenseTable);
+}
+
+const filterPaidByEl = document.getElementById("filterPaidBy");
+if (filterPaidByEl) {
+  filterPaidByEl.addEventListener("change", renderExpenseTable);
 }

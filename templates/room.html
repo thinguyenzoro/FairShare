@@ -142,13 +142,24 @@
   </section>
 
   <section class="card">
-    <h2 data-i18n="sectionExpenseList">3. Expense list</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+      <h2 style="margin: 0;" data-i18n="sectionExpenseList">3. Expense list</h2>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <select id="filterCategory" style="padding: 4px 8px; font-size: 0.85rem; border-radius: 6px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text);">
+          <option value="" data-i18n="filterAllCat">All Categories</option>
+        </select>
+        <select id="filterPaidBy" style="padding: 4px 8px; font-size: 0.85rem; border-radius: 6px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text);">
+          <option value="" data-i18n="filterAllPayer">All Payers</option>
+        </select>
+      </div>
+    </div>
     <div class="table-scroll">
       <table class="expense-table">
         <thead><tr>
-          <th data-i18n="thDesc">Description</th>
-          <th data-i18n="thAmount">Amount</th>
-          <th data-i18n="thPaidBy">Paid by</th>
+          <th data-sort="category" class="sortable" style="cursor: pointer;"><span data-i18n="thCategory">Category</span> <span class="sort-icon"></span></th>
+          <th data-sort="description" class="sortable" style="cursor: pointer;"><span data-i18n="thDesc">Description</span> <span class="sort-icon"></span></th>
+          <th data-sort="amount" class="sortable" style="cursor: pointer;"><span data-i18n="thAmount">Amount</span> <span class="sort-icon"></span></th>
+          <th data-sort="paid_by" class="sortable" style="cursor: pointer;"><span data-i18n="thPaidBy">Paid by</span> <span class="sort-icon"></span></th>
           <th data-i18n="thSplitWith">Split with</th>
           <th data-i18n="thBill">Bill</th>
           <th></th>
@@ -200,7 +211,7 @@
 
 <button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
 
-<script src="{{ url_for('static', filename='room.js') + '?v=9' }}"></script>
+<script src="{{ url_for('static', filename='room.js') + '?v=12' }}"></script>
 <script src="{{ url_for('static', filename='feedback.js') }}"></script>
 </body>
 </html>
