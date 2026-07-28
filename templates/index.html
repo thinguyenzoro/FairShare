@@ -22,7 +22,8 @@
   </label>
 </div>
 <div class="landing">
-  <h1 data-i18n="appTitle">Splitbill</h1>
+  <img src="{{ url_for('static', filename='logo.svg') }}" alt="Splitbill Logo" style="width: 120px; height: 120px; border-radius: 20%; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+  <h1 data-i18n="appTitle" style="margin-top: 0;">Splitbill</h1>
   <p class="subtitle" data-i18n="tagline">The simplest way to split group expenses</p>
   <form id="goForm" class="landing-form">
     <span class="prefix" data-i18n="urlPrefix">splitbill/</span>
@@ -44,7 +45,11 @@
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const slug = input.value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-_]/g, '');
-    if (slug) window.location.href = '/' + slug;
+    if (slug) {
+      const l = typeof currentLang === 'function' ? currentLang() : 'vi';
+      const c = typeof currentCurrency === 'function' ? currentCurrency() : 'VND';
+      window.location.href = `/${slug}?lang=${l}&currency=${c}`;
+    }
   });
 </script>
 
