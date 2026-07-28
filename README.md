@@ -1,6 +1,6 @@
-# 💰 FairShare - Group Expense Splitter
+# 💰 Splitbill - Group Expense Splitter
 
-**FairShare** is a lightweight, privacy-friendly, and modern web application to split expenses with friends and groups without requiring any login or registration.
+**Splitbill** is a lightweight, privacy-friendly, and modern web application to split expenses with friends and groups without requiring any login or registration.
 
 ## ✨ Features
 - 🚀 **No Login Required**: Simply create or type any room name and share the link with your group.
@@ -26,8 +26,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/thinguyenzoro/FairShare.git
-cd FairShare
+git clone https://github.com/thinguyenzoro/Splitbill.git
+cd Splitbill
 
 # Start the application
 docker compose up --build -d
@@ -55,7 +55,7 @@ Open **[http://localhost:8000](http://localhost:8000)** in your browser.
 
 ## ☁️ Deployment on VPS
 
-To deploy FairShare on an Ubuntu / Debian VPS with Docker:
+To deploy Splitbill on an Ubuntu / Debian VPS with Docker:
 
 ```bash
 chmod +x deploy.sh
@@ -66,7 +66,7 @@ chmod +x deploy.sh
 
 ## ☕ Support / Donate
 
-If you find **FairShare** helpful, buy the author a coffee!
+If you find **Splitbill** helpful, buy the author a coffee!
 
 <p align="center">
   <img src="static/qr-placeholder.jpg" alt="Donate QR Code" width="220">

@@ -60,11 +60,25 @@ function renderPeopleList() {
   state.people.forEach((p) => {
     const li = document.createElement("li");
     li.textContent = p.name;
-    const btn = document.createElement("button");
-    btn.textContent = "×";
-    btn.title = t("deleteBtn");
-    btn.addEventListener("click", () => deletePerson(p.id));
-    li.appendChild(btn);
+    
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.gap = "5px";
+
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "✎";
+    editBtn.title = "Edit";
+    editBtn.style.color = "var(--primary)";
+    editBtn.addEventListener("click", () => editPerson(p.id, p.name));
+    
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "×";
+    delBtn.title = t("deleteBtn");
+    delBtn.addEventListener("click", () => deletePerson(p.id));
+
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+    li.appendChild(actions);
     ul.appendChild(li);
   });
 }
@@ -240,21 +254,45 @@ function renderBalances() {
 }
 
 function renderBreakdown() {
-  const ul = document.getElementById("breakdownList");
-  if (!ul) return;
-  ul.innerHTML = "";
+  const container = document.getElementById("breakdownList");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  container.style.listStyle = "none";
+  container.style.padding = "0";
+
   state.breakdown.forEach((b) => {
     const li = document.createElement("li");
+    li.className = "breakdown-card";
+    
     if (b.items.length === 0) {
-      li.textContent = `${b.name}: ${t("noExpensesYet")}`;
-      ul.appendChild(li);
+      li.innerHTML = `
+        <div class="breakdown-header" style="border-bottom:none; margin-bottom:0; padding-bottom:0;">
+          <span class="breakdown-name">${b.name}</span>
+          <span class="bd-amount" style="color:var(--text-muted)">${t("noExpensesYet")}</span>
+        </div>
+      `;
+      container.appendChild(li);
       return;
     }
-    const parts = b.items
-      .map((i) => `${i.description || t("noDescription")} ${fmt(i.owed)} (${i.shares} ${t("shareUnit")})`)
-      .join(" + ");
-    li.textContent = `${b.name}: ${parts} = ${fmt(b.total)}`;
-    ul.appendChild(li);
+    
+    let itemsHtml = b.items.map(i => {
+      const desc = i.description || t("noDescription");
+      const amt = fmt(i.owed);
+      const shares = `(${i.shares} ${t("shareUnit")})`;
+      return `<li><span class="bd-desc">${desc}</span><span class="bd-amount">${amt} <small>${shares}</small></span></li>`;
+    }).join("");
+
+    li.innerHTML = `
+      <div class="breakdown-header">
+        <span class="breakdown-name">${b.name}</span>
+        <span class="breakdown-total">${fmt(b.total)}</span>
+      </div>
+      <ul class="breakdown-items">
+        ${itemsHtml}
+      </ul>
+    `;
+    container.appendChild(li);
   });
 }
 
@@ -262,17 +300,99 @@ function renderSettlements() {
   const ul = document.getElementById("settlementsList");
   if (!ul) return;
   ul.innerHTML = "";
+  ul.style.listStyle = "none";
+  ul.style.padding = "0";
+  
   if (state.settlements.length === 0) {
     const li = document.createElement("li");
     li.textContent = t("noSettlements");
     ul.appendChild(li);
-    return;
+  } else {
+    state.settlements.forEach((s) => {
+      const li = document.createElement("li");
+      li.className = "settlement-card";
+      li.innerHTML = `
+        <div style="flex:1">
+          <span class="settle-from">${s.from_name}</span>
+          <span class="settle-arrow">➔</span>
+          <span class="settle-to">${s.to_name}</span>
+        </div>
+        <strong class="settle-amount">${fmt(s.amount)}</strong>
+      `;
+      
+      const payBtn = document.createElement("button");
+      payBtn.className = "pay-btn";
+      payBtn.textContent = t("btnPay");
+      payBtn.addEventListener("click", async () => {
+        try {
+          const res = await fetch(`/${document.body.dataset.room}/api/settle`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: s.from,
+              to: s.to,
+              amount: s.amount
+            })
+          });
+          if (!res.ok) throw new Error("failed");
+          state = await res.json();
+          render();
+        } catch(e) {
+          alert(t("GENERIC_ERROR"));
+        }
+      });
+      li.appendChild(payBtn);
+      ul.appendChild(li);
+    });
   }
-  state.settlements.forEach((s) => {
-    const li = document.createElement("li");
-    li.textContent = `${s.from_name} ${t("settlementPays")} ${s.to_name}: ${fmt(s.amount)}`;
-    ul.appendChild(li);
-  });
+
+  // Render completed settlements below
+  const settled = state.expenses.filter(e => e.is_settlement);
+  if (settled.length > 0) {
+    const nameById = Object.fromEntries(state.people.map(p => [p.id, p.name]));
+    
+    const h3 = document.createElement("h3");
+    h3.textContent = t("settledList");
+    h3.style.marginTop = "20px";
+    h3.style.fontSize = "1rem";
+    h3.style.color = "var(--text-muted)";
+    ul.appendChild(h3);
+
+    settled.forEach(e => {
+      const li = document.createElement("li");
+      li.className = "settlement-card";
+      li.style.opacity = "0.7";
+      
+      const toId = e.participants.length > 0 ? e.participants[0].person_id : null;
+      const toName = nameById[toId] || "?";
+      const fromName = nameById[e.paid_by] || "?";
+      
+      li.innerHTML = `
+        <div style="flex:1">
+          <span class="settle-from">${fromName}</span>
+          <span style="font-size: 0.9em; margin: 0 4px">${t("settledText")}</span>
+          <span class="settle-to">${toName}</span>
+        </div>
+        <strong class="settle-amount">${fmt(e.amount)}</strong>
+      `;
+
+      const undoBtn = document.createElement("button");
+      undoBtn.className = "undo-btn";
+      undoBtn.textContent = t("btnUndo");
+      undoBtn.addEventListener("click", async () => {
+        try {
+          const res = await fetch(`/${document.body.dataset.room}/api/expenses/${e.id}`, { method: "DELETE" });
+          if (!res.ok) throw new Error("failed");
+          state = await res.json();
+          render();
+        } catch(err) {
+          alert(t("GENERIC_ERROR"));
+        }
+      });
+      li.appendChild(undoBtn);
+      ul.appendChild(li);
+    });
+  }
 }
 
 function updateExpenseFormMode() {
@@ -338,7 +458,9 @@ function cancelEditExpense() {
 }
 
 function buildSummaryText() {
-  const nameById = Object.fromEntries(state.people.map((p) => [p.id, p.name]));
+  const nameById = {};
+  state.people.forEach((p) => (nameById[p.id] = p.name));
+  const room = document.body.dataset.room || "Room";
   const lines = [`${room} — ${t("appTitle")}`, ""];
 
   lines.push(t("sectionExpenseList"));
@@ -371,7 +493,7 @@ function buildSummaryText() {
 
   lines.push("", t("sectionSettlements"));
   if (state.settlements.length === 0) {
-    lines.push(t("noSettlements"));
+    lines.push("-");
   } else {
     state.settlements.forEach((s) => {
       lines.push(`- ${s.from_name} ${t("settlementPays")} ${s.to_name}: ${fmt(s.amount)}`);
@@ -428,28 +550,55 @@ if (addPersonBtn) addPersonBtn.addEventListener("click", addSinglePerson);
 const singleNameInput = document.getElementById("singleNameInput");
 if (singleNameInput) {
   singleNameInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") addSinglePerson();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addSinglePerson();
+    }
   });
 }
 
+let isAddingPerson = false;
 async function addSinglePerson() {
+  if (isAddingPerson) return;
   const input = document.getElementById("singleNameInput");
   const name = input.value.trim();
   if (!name) return;
-  await fetch(`${apiBase}/people`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  input.value = "";
-  await loadState();
+  
+  isAddingPerson = true;
+  try {
+    await fetch(`${apiBase}/people`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    input.value = "";
+    await loadState();
+  } finally {
+    isAddingPerson = false;
+  }
 }
 
 async function deletePerson(id) {
   const res = await fetch(`${apiBase}/people/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const data = await res.json();
-    alert(t(data.error) || t("GENERIC_ERROR"));
+    await window.customAlert(t(data.error) || t("GENERIC_ERROR"));
+    return;
+  }
+  await loadState();
+}
+
+async function editPerson(id, currentName) {
+  const newName = await window.customPrompt(t("enterNewName") || "Nhập tên mới:", currentName);
+  if (!newName || !newName.trim() || newName.trim() === currentName) return;
+  const res = await fetch(`${apiBase}/people/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: newName.trim() })
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    await window.customAlert(t(data.error) || t("GENERIC_ERROR"));
     return;
   }
   await loadState();
@@ -570,7 +719,7 @@ const lockToggleBtn = document.getElementById("lockToggleBtn");
 if (lockToggleBtn) {
   lockToggleBtn.addEventListener("click", async () => {
     if (state.locked) {
-      const pin = prompt(t("enterPinToUnlock"));
+      const pin = await window.customPrompt(t("enterPinToUnlock"));
       if (pin === null) return;
       const res = await fetch(`${apiBase}/remove-lock`, {
         method: "POST",
@@ -579,13 +728,13 @@ if (lockToggleBtn) {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(t(data.error) || t("GENERIC_ERROR"));
+        await window.customAlert(t(data.error) || t("GENERIC_ERROR"));
         return;
       }
       state = data;
       render();
     } else {
-      const pin = prompt(t("setPinToLock"));
+      const pin = await window.customPrompt(t("setPinToLock"));
       if (pin === null) return;
       const res = await fetch(`${apiBase}/lock`, {
         method: "POST",
@@ -594,7 +743,7 @@ if (lockToggleBtn) {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(t(data.error) || t("GENERIC_ERROR"));
+        await window.customAlert(t(data.error) || t("GENERIC_ERROR"));
         return;
       }
       state = data;
@@ -610,6 +759,11 @@ if (copyLinkBtn) {
   copyLinkBtn.addEventListener("click", async () => {
     const url = new URL(window.location.href);
     url.searchParams.set("lang", currentLang());
+    if (typeof currentCurrency === "function") {
+      url.searchParams.set("currency", currentCurrency());
+    } else {
+      url.searchParams.set("currency", localStorage.getItem("currency") || "VND");
+    }
     await navigator.clipboard.writeText(url.toString());
     const old = copyLinkBtn.textContent;
     copyLinkBtn.textContent = t("copied");

@@ -3,8 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+<meta property="og:image" content="{{ url_for('static', filename='preview_1200x630.jpg') }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ url_for('static', filename='preview_1200x630.jpg') }}">
 <meta name="robots" content="noindex, nofollow">
-<title>FairShare</title>
+<title>Splitbill</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') + '?v=7' }}">
 <script src="{{ url_for('static', filename='theme.js') }}"></script>
 <script src="{{ url_for('static', filename='i18n.js') + '?v=7' }}"></script>
@@ -18,10 +22,10 @@
   </label>
 </div>
 <div class="landing">
-  <h1 data-i18n="appTitle">FairShare</h1>
+  <h1 data-i18n="appTitle">Splitbill</h1>
   <p class="subtitle" data-i18n="tagline">The simplest way to split group expenses</p>
   <form id="goForm" class="landing-form">
-    <span class="prefix" data-i18n="urlPrefix">fairshare/</span>
+    <span class="prefix" data-i18n="urlPrefix">splitbill/</span>
     <input id="slugInput" type="text" data-i18n-placeholder="slugPlaceholder" placeholder="your-group-name" autocomplete="off" autofocus>
     <button type="submit" data-i18n="goButton">Go</button>
   </form>

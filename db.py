@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     amount REAL NOT NULL,
     paid_by INTEGER NOT NULL REFERENCES people(id),
     image_url TEXT,
+    is_settlement BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -58,14 +59,16 @@ def init_db():
     conn.commit()
     try:
         conn.execute("ALTER TABLE rooms ADD COLUMN pin_hash TEXT")
-        conn.commit()
     except sqlite3.OperationalError:
-        pass  # column already exists
+        pass
+    try:
+        conn.execute("ALTER TABLE expenses ADD COLUMN is_settlement BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     try:
         conn.execute("ALTER TABLE expenses ADD COLUMN image_url TEXT")
-        conn.commit()
     except sqlite3.OperationalError:
-        pass  # column already exists
+        pass
     conn.close()
 
 
@@ -132,7 +135,7 @@ def delete_person(room_id, person_id):
 def list_expenses(room_id):
     conn = get_conn()
     expenses = conn.execute(
-        "SELECT id, description, amount, paid_by, image_url, created_at FROM expenses WHERE room_id = ? ORDER BY id",
+        "SELECT id, description, amount, paid_by, image_url, is_settlement, created_at FROM expenses WHERE room_id = ? ORDER BY id",
         (room_id,),
     ).fetchall()
     result = []
@@ -147,11 +150,11 @@ def list_expenses(room_id):
     return result
 
 
-def add_expense(room_id, description, amount, paid_by, participants, image_url=None):
+def add_expense(room_id, description, amount, paid_by, participants, image_url=None, is_settlement=0):
     conn = get_conn()
     cur = conn.execute(
-        "INSERT INTO expenses (room_id, description, amount, paid_by, image_url) VALUES (?, ?, ?, ?, ?)",
-        (room_id, description, amount, paid_by, image_url),
+        "INSERT INTO expenses (room_id, description, amount, paid_by, image_url, is_settlement) VALUES (?, ?, ?, ?, ?, ?)",
+        (room_id, description, amount, paid_by, image_url, is_settlement),
     )
     expense_id = cur.lastrowid
     for p in participants:
@@ -203,3 +206,9 @@ def add_feedback(room_slug, message):
     conn.commit()
     conn.close()
 
+
+def update_person(room_id, person_id, name):
+    conn = get_conn()
+    conn.execute("UPDATE people SET name = ? WHERE room_id = ? AND id = ?", (name, room_id, person_id))
+    conn.commit()
+    conn.close()

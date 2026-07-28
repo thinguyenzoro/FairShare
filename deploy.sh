@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "   DEPLOYING FAIRSHARE APP WITH DOCKER    "
+echo "   DEPLOYING SPLITBILL APP WITH DOCKER    "
 echo "=========================================="
 
 # Ensure data directory exists

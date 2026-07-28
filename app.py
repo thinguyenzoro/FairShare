@@ -344,6 +344,21 @@ def api_delete_person(room_slug, person_id):
     return jsonify(_build_state(room))
 
 
+@app.put("/<room_slug>/api/people/<int:person_id>")
+def api_edit_person(room_slug, person_id):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+    data = request.get_json(force=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "NAME_REQUIRED"}), 400
+    db.update_person(room["id"], person_id, name)
+    return jsonify(_build_state(room))
+
+
 @app.post("/<room_slug>/api/expenses")
 def api_add_expense(room_slug):
     room = _room_or_404(room_slug)
@@ -388,6 +403,41 @@ def api_delete_expense(room_slug, expense_id):
     if not _has_access(room):
         return jsonify({"error": "ROOM_LOCKED"}), 403
     db.delete_expense(room["id"], expense_id)
+    return jsonify(_build_state(room))
+
+
+@app.post("/<room_slug>/api/settle")
+def api_settle(room_slug):
+    room = _room_or_404(room_slug)
+    if room is None:
+        return jsonify({"error": "invalid room"}), 404
+    if not _has_access(room):
+        return jsonify({"error": "ROOM_LOCKED"}), 403
+
+    data = request.get_json(force=True) or {}
+    try:
+        amount = float(data.get("amount"))
+        from_id = int(data.get("from"))
+        to_id = int(data.get("to"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "INVALID_DATA"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "AMOUNT_MUST_BE_POSITIVE"}), 400
+
+    participants = [{"person_id": to_id, "shares": 1.0}]
+    
+    # A settlement is an expense paid by "from" and split completely by "to"
+    db.add_expense(
+        room_id=room["id"],
+        description="Thanh toán / Settle up",
+        amount=amount,
+        paid_by=from_id,
+        participants=participants,
+        image_url=None,
+        is_settlement=1
+    )
+    
     return jsonify(_build_state(room))
 
 

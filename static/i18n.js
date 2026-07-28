@@ -1,8 +1,8 @@
 const translations = {
   en: {
-    appTitle: "FairShare",
+    appTitle: "Splitbill",
     tagline: "The simplest way to split group expenses",
-    urlPrefix: "fairshare/",
+    urlPrefix: "splitbill/",
     slugPlaceholder: "your-group-name",
     goButton: "Go",
     landingHint: "No login required. Type any room name and share the link with your group.",
@@ -28,6 +28,7 @@ const translations = {
     splitExact: "✓ Fully allocated, matches the total",
     splitShortBy: "Short by",
     splitOverBy: "Over by",
+    createGroupBtn: "+ New Group",
     addExpenseBtn: "Add expense",
     updateExpenseBtn: "Update expense",
     cancelEditBtn: "Cancel",
@@ -56,7 +57,7 @@ const translations = {
     noDescription: "(no description)",
     shareUnit: "share(s)",
     namePlaceholderPrefix: "Person",
-    donateHeading: "Buy the author a coffee",
+    donateHeading: "Buy the author a coffee to maintain the domain, server, and update features",
     donateHint: "Scan the QR code to donate — thank you for the support!",
     lockedTitle: "This room is locked",
     lockedSubtitle: "Enter the PIN to view this room",
@@ -80,13 +81,17 @@ const translations = {
     ROOM_LOCKED: "Room is locked",
     MESSAGE_REQUIRED: "Message cannot be empty",
     GENERIC_ERROR: "Something went wrong",
+    btnPay: "Pay",
+    btnUndo: "Undo",
+    settledList: "Completed Settlements",
+    settledText: "paid",
         feedbackBtn: "Feedback",
     githubFooterLink: "⭐ Open Source on GitHub — Want to contribute or create a PR? Click here!",
   },
   vi: {
-    appTitle: "FairShare",
+    appTitle: "Splitbill",
     tagline: "Cách đơn giản nhất để chia tiền nhóm",
-    urlPrefix: "fairshare/",
+    urlPrefix: "splitbill/",
     slugPlaceholder: "ten-nhom-cua-ban",
     goButton: "Vào",
     landingHint: "Không cần đăng nhập. Gõ một tên phòng bất kỳ rồi chia sẻ link đó cho mọi người trong nhóm.",
@@ -112,6 +117,7 @@ const translations = {
     splitExact: "✓ Đã chia đủ, khớp tổng tiền",
     splitShortBy: "Còn thiếu",
     splitOverBy: "Dư",
+    createGroupBtn: "+ Tạo nhóm mới",
     addExpenseBtn: "Thêm chi tiêu",
     updateExpenseBtn: "Cập nhật chi tiêu",
     cancelEditBtn: "Hủy",
@@ -140,7 +146,7 @@ const translations = {
     noDescription: "(không mô tả)",
     shareUnit: "phần",
     namePlaceholderPrefix: "Người",
-    donateHeading: "Ủng hộ tác giả một ly cà phê",
+    donateHeading: "Ủng hộ tác giả ly cafe để duy trì tên miền, máy chủ và update tính năng",
     donateHint: "Quét mã QR để donate — cảm ơn bạn đã ủng hộ!",
     lockedTitle: "Phòng này đã bị khóa",
     lockedSubtitle: "Nhập PIN để xem phòng này",
@@ -164,6 +170,10 @@ const translations = {
     ROOM_LOCKED: "Phòng này đã bị khóa",
     MESSAGE_REQUIRED: "Bạn chưa viết gì cả",
     GENERIC_ERROR: "Có lỗi xảy ra",
+    btnPay: "Thanh toán",
+    btnUndo: "Hoàn tác",
+    settledList: "Khoản đã thanh toán",
+    settledText: "đã thanh toán cho",
         feedbackBtn: "Góp ý",
     githubFooterLink: "⭐ Open Source trên GitHub — Bạn muốn đóng góp hoặc tạo PR? Bấm vào đây!",
   },
@@ -231,9 +241,25 @@ function syncCurrencySelect() {
   sel.value = currentCurrency();
 }
 
+function updateUrlParam(key, value) {
+  const url = new URL(window.location);
+  url.searchParams.set(key, value);
+  window.history.replaceState({}, '', url);
+}
+
+function setLang(lang) {
+  if (translations[lang]) {
+    localStorage.setItem("lang", lang);
+    updateUrlParam("lang", lang);
+    applyI18n();
+    document.dispatchEvent(new Event("langchange"));
+  }
+}
+
 function setCurrency(code) {
   if (CURRENCIES[code]) {
     localStorage.setItem("currency", code);
+    updateUrlParam("currency", code);
     syncCurrencySelect();
     document.dispatchEvent(new Event("currencychange"));
   }
@@ -256,20 +282,18 @@ function applyI18n() {
 
   const langBtn = document.getElementById("langToggle");
   if (langBtn) {
-    langBtn.textContent = currentLang() === "vi" ? "EN" : "VI";
+    langBtn.textContent = currentLang() === "vi" ? "🇻🇳 VI" : "🇺🇸 EN";
   }
   syncCurrencySelect();
 }
 
-function setLang(lang) {
-  if (translations[lang]) {
-    localStorage.setItem("lang", lang);
-    applyI18n();
-    document.dispatchEvent(new Event("langchange"));
-  }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(window.location.search);
+  const urlLang = params.get("lang");
+  if (urlLang && translations[urlLang]) localStorage.setItem("lang", urlLang);
+  const urlCurr = params.get("currency");
+  if (urlCurr && CURRENCIES[urlCurr]) localStorage.setItem("currency", urlCurr);
+
   applyI18n();
   const langBtn = document.getElementById("langToggle");
   if (langBtn) {

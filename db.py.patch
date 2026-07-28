@@ -1,0 +1,24 @@
+--- db.py
++++ db.py
+@@ -53,24 +53,17 @@
+ 
+ def init_db():
+     conn = get_conn()
+     conn.executescript(SCHEMA)
+     conn.commit()
+     try:
+         conn.execute("ALTER TABLE rooms ADD COLUMN pin_hash TEXT")
+     except sqlite3.OperationalError:
+         pass
+     try:
+         conn.execute("ALTER TABLE expenses ADD COLUMN is_settlement BOOLEAN DEFAULT 0")
+     except sqlite3.OperationalError:
+         pass
+     conn.close()
+-        conn.commit()
+-    except sqlite3.OperationalError:
+-        pass  # column already exists
+-    conn.close()
+ 
+ 
+ def list_people(room_id):

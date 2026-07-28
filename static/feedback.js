@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!btn) return;
 
   btn.addEventListener('click', async () => {
-    const message = prompt(t('feedbackPrompt'));
+    const message = await window.customPrompt(t('feedbackPrompt'));
     if (!message || !message.trim()) return;
 
     const roomSlug = document.body.dataset.room || null;
@@ -14,9 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ message: message.trim(), room_slug: roomSlug }),
       });
       if (!res.ok) throw new Error('failed');
-      alert(t('feedbackThanks'));
+      await window.customAlert(t('feedbackThanks'));
     } catch (err) {
-      alert(t('GENERIC_ERROR'));
+      await window.customAlert(t('GENERIC_ERROR'));
     }
   });
 });
