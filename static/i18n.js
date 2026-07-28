@@ -282,7 +282,7 @@ function applyI18n() {
 
   const langBtn = document.getElementById("langToggle");
   if (langBtn) {
-    langBtn.textContent = currentLang() === "vi" ? "🇻🇳 VI" : "🇺🇸 EN";
+    langBtn.textContent = currentLang() === "vi" ? "🇻🇳 VI" : "🇬🇧 EN";
   }
   syncCurrencySelect();
 }
