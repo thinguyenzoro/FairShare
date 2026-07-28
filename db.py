@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     amount REAL NOT NULL,
     paid_by INTEGER NOT NULL REFERENCES people(id),
     image_url TEXT,
+    category TEXT DEFAULT 'other',
     is_settlement BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -57,6 +58,12 @@ def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
+    try:
+        conn.execute("ALTER TABLE expenses ADD COLUMN category TEXT DEFAULT 'other'")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     try:
         conn.execute("ALTER TABLE rooms ADD COLUMN pin_hash TEXT")
     except sqlite3.OperationalError:
@@ -135,7 +142,7 @@ def delete_person(room_id, person_id):
 def list_expenses(room_id):
     conn = get_conn()
     expenses = conn.execute(
-        "SELECT id, description, amount, paid_by, image_url, is_settlement, created_at FROM expenses WHERE room_id = ? ORDER BY id",
+        "SELECT id, description, amount, paid_by, image_url, category, is_settlement, created_at FROM expenses WHERE room_id = ? ORDER BY id",
         (room_id,),
     ).fetchall()
     result = []
@@ -150,11 +157,11 @@ def list_expenses(room_id):
     return result
 
 
-def add_expense(room_id, description, amount, paid_by, participants, image_url=None, is_settlement=0):
+def add_expense(room_id, description, amount, paid_by, participants, image_url=None, category='other', is_settlement=0):
     conn = get_conn()
     cur = conn.execute(
-        "INSERT INTO expenses (room_id, description, amount, paid_by, image_url, is_settlement) VALUES (?, ?, ?, ?, ?, ?)",
-        (room_id, description, amount, paid_by, image_url, is_settlement),
+        "INSERT INTO expenses (room_id, description, amount, paid_by, image_url, category, is_settlement) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (room_id, description, amount, paid_by, image_url, category, is_settlement),
     )
     expense_id = cur.lastrowid
     for p in participants:
@@ -167,17 +174,17 @@ def add_expense(room_id, description, amount, paid_by, participants, image_url=N
     return expense_id
 
 
-def update_expense(room_id, expense_id, description, amount, paid_by, participants, image_url=None):
+def update_expense(room_id, expense_id, description, amount, paid_by, participants, image_url=None, category='other'):
     conn = get_conn()
     if image_url is not None:
         conn.execute(
-            "UPDATE expenses SET description = ?, amount = ?, paid_by = ?, image_url = ? WHERE id = ? AND room_id = ?",
-            (description, amount, paid_by, image_url, expense_id, room_id),
+            "UPDATE expenses SET description = ?, amount = ?, paid_by = ?, image_url = ?, category = ? WHERE id = ? AND room_id = ?",
+            (description, amount, paid_by, image_url, category, expense_id, room_id),
         )
     else:
         conn.execute(
-            "UPDATE expenses SET description = ?, amount = ?, paid_by = ? WHERE id = ? AND room_id = ?",
-            (description, amount, paid_by, expense_id, room_id),
+            "UPDATE expenses SET description = ?, amount = ?, paid_by = ?, category = ? WHERE id = ? AND room_id = ?",
+            (description, amount, paid_by, category, expense_id, room_id),
         )
     conn.execute("DELETE FROM expense_shares WHERE expense_id = ?", (expense_id,))
     for p in participants:

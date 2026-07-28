@@ -25,6 +25,11 @@ STRINGS = {
         "noDescription": "(no description)",
         "noParticipation": "hasn't joined any expense yet",
         "shareUnit": "share(s)",
+        "catFood": "[Food] ",
+        "catTransport": "[Transport] ",
+        "catLodging": "[Lodging] ",
+        "catEnt": "[Entertainment] ",
+        "catOther": "",
     },
     "vi": {
         "appTitle": "Splitbill",
@@ -44,6 +49,11 @@ STRINGS = {
         "noDescription": "(không mô tả)",
         "noParticipation": "chưa tham gia chi tiêu nào",
         "shareUnit": "phần",
+        "catFood": "[Ăn uống] ",
+        "catTransport": "[Di chuyển] ",
+        "catLodging": "[Khách sạn] ",
+        "catEnt": "[Giải trí] ",
+        "catOther": "",
     },
 }
 
@@ -142,12 +152,20 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
                 pdf.rect(pdf.get_x(), pdf.get_y(), 190, 8, style='F')
             
             payer = name_by_id.get(e["paid_by"], "?")
+            cat_val = e.get("category", "other")
+            cat_str = ""
+            if cat_val == "food": cat_str = s.get("catFood", "")
+            elif cat_val == "transport": cat_str = s.get("catTransport", "")
+            elif cat_val == "lodging": cat_str = s.get("catLodging", "")
+            elif cat_val == "entertainment": cat_str = s.get("catEnt", "")
+            
             desc = e["description"] or s["noDescription"]
+            desc_text = f"{cat_str}{desc}"
             amount_text = fmt(e["amount"])
             
             pdf.set_font("Roboto", "", 11)
             pdf.set_text_color(*TEXT_COLOR)
-            pdf.cell(90, 8, f" {desc}", ln=0)
+            pdf.cell(90, 8, f" {desc_text}", ln=0)
             
             pdf.set_text_color(*MUTED_COLOR)
             pdf.cell(60, 8, f"{s['paidBy']} {payer}", ln=0)

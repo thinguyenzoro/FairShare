@@ -8,6 +8,16 @@ function getExpAmountValue() {
 const room = document.body.dataset.room;
 const apiBase = `/${room}/api`;
 
+function getCategoryIcon(cat) {
+  switch(cat) {
+    case 'food': return '🍔';
+    case 'transport': return '🚗';
+    case 'lodging': return '🏨';
+    case 'entertainment': return '🍿';
+    default: return '📦';
+  }
+}
+
 let state = { people: [], expenses: [], balances: [], settlements: [], breakdown: [] };
 let editingExpenseId = null;
 let splitMode = "shares";
@@ -209,8 +219,11 @@ function renderExpenseTable() {
       ? `<img src="${e.image_url}" class="bill-thumb" alt="Bill" onclick="openLightbox('${e.image_url}')">`
       : "-";
 
+    const catIcon = getCategoryIcon(e.category);
+    const desc = e.description ? `${catIcon} ${e.description}` : catIcon;
+
     tr.innerHTML = `
-      <td>${e.description || ""}</td>
+      <td>${desc}</td>
       <td>${fmt(e.amount)}</td>
       <td>${nameById[e.paid_by] || "?"}</td>
       <td>${participantsText}</td>
@@ -427,6 +440,8 @@ function startEditExpense(expense) {
 
   document.getElementById("expenseError").textContent = "";
   document.getElementById("expDesc").value = expense.description || "";
+  const catEl = document.getElementById("expCategory");
+  if (catEl) catEl.value = expense.category || "other";
   const formattedAmt = currentCurrency() === "VND" ? Math.round(expense.amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") : expense.amount;
   document.getElementById("expAmount").value = formattedAmt;
   document.getElementById("expPaidBy").value = expense.paid_by;
@@ -672,6 +687,9 @@ if (expenseForm) {
       }
     }
 
+    const categoryEl = document.getElementById("expCategory");
+    const category = categoryEl ? categoryEl.value : "other";
+
     const url = editingExpenseId ? `${apiBase}/expenses/${editingExpenseId}` : `${apiBase}/expenses`;
     const method = editingExpenseId ? "PUT" : "POST";
 
@@ -685,6 +703,7 @@ if (expenseForm) {
         participants,
         split_mode: splitMode,
         image_url: currentImageUrl,
+        category,
       }),
     });
     const data = await res.json();

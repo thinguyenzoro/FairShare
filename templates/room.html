@@ -57,6 +57,15 @@
     <h2 data-i18n="sectionAddExpense">2. Add expense</h2>
     <form id="expenseForm">
       <label><span data-i18n="descLabel">Description</span> <input id="expDesc" type="text" data-i18n-placeholder="descPlaceholder" placeholder="Dinner, gas, ..."></label>
+      <label><span data-i18n="lblCategory">Category</span>
+        <select id="expCategory">
+          <option value="other" data-i18n="catOther">📦 Other</option>
+          <option value="food" data-i18n="catFood">🍔 Food</option>
+          <option value="transport" data-i18n="catTransport">🚗 Transport</option>
+          <option value="lodging" data-i18n="catLodging">🏨 Lodging</option>
+          <option value="entertainment" data-i18n="catEnt">🍿 Entertainment</option>
+        </select>
+      </label>
       <label><span id="amountLabelText">Amount</span> <input id="expAmount" type="text" inputmode="numeric" placeholder="100 000" required></label>
       <label><span data-i18n="paidByLabel">Paid by</span>
         <select id="expPaidBy" required></select>

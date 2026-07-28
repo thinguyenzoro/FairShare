@@ -145,12 +145,17 @@ def _parse_expense_payload(data):
     if image_url and not isinstance(image_url, str):
         image_url = None
 
+    category = data.get("category", "other")
+    if not isinstance(category, str):
+        category = "other"
+
     return {
         "description": description,
         "amount": amount,
         "paid_by": paid_by,
         "participants": clean_participants,
         "image_url": image_url,
+        "category": category,
     }, None
 
 
