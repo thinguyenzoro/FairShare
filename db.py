@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS rooms (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT UNIQUE NOT NULL,
     pin_hash TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS people (
@@ -76,16 +77,21 @@ def init_db():
         conn.execute("ALTER TABLE expenses ADD COLUMN image_url TEXT")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE rooms ADD COLUMN deleted_at TIMESTAMP")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
     conn.close()
 
 
 def get_or_create_room(slug):
     conn = get_conn()
-    row = conn.execute("SELECT id, slug, pin_hash FROM rooms WHERE slug = ?", (slug,)).fetchone()
+    row = conn.execute("SELECT id, slug, pin_hash, deleted_at FROM rooms WHERE slug = ?", (slug,)).fetchone()
     if row is None:
         conn.execute("INSERT INTO rooms (slug) VALUES (?)", (slug,))
         conn.commit()
-        row = conn.execute("SELECT id, slug, pin_hash FROM rooms WHERE slug = ?", (slug,)).fetchone()
+        row = conn.execute("SELECT id, slug, pin_hash, deleted_at FROM rooms WHERE slug = ?", (slug,)).fetchone()
     conn.close()
     return dict(row)
 
@@ -99,6 +105,30 @@ def set_room_pin(room_id, pin_hash):
 
 def clear_room_pin(room_id):
     set_room_pin(room_id, None)
+
+
+def set_room_deleted(room_id):
+    conn = get_conn()
+    conn.execute("UPDATE rooms SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+
+
+def restore_room(room_id):
+    conn = get_conn()
+    conn.execute("UPDATE rooms SET deleted_at = NULL WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
+
+
+def delete_room_permanently(room_id):
+    conn = get_conn()
+    conn.execute("DELETE FROM expense_shares WHERE expense_id IN (SELECT id FROM expenses WHERE room_id = ?)", (room_id,))
+    conn.execute("DELETE FROM expenses WHERE room_id = ?", (room_id,))
+    conn.execute("DELETE FROM people WHERE room_id = ?", (room_id,))
+    conn.execute("DELETE FROM rooms WHERE id = ?", (room_id,))
+    conn.commit()
+    conn.close()
 
 
 def list_people(room_id):

@@ -11,9 +11,18 @@
 <title>{{ room_slug }} - Splitbill</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') + '?v=9' }}">
 <script src="{{ url_for('static', filename='theme.js') }}"></script>
-<script src="{{ url_for('static', filename='i18n.js') + '?v=9' }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') + '?v=10' }}"></script>
 </head>
 <body data-room="{{ room_slug }}">
+
+{% if is_deleted %}
+<div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
+  <h2 data-i18n="roomScheduledDelete">This room is scheduled for deletion.</h2>
+  <p><span data-i18n="daysLeftDelete">Days left until permanent deletion:</span> <strong style="color: var(--danger);">{{ days_left }}</strong></p>
+  <button id="restoreRoomBtn" type="button" style="margin-top: 20px; font-size: 1.1rem; padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;" data-i18n="restoreRoomBtn">Restore Room</button>
+</div>
+{% endif %}
+
 <header class="room-header">
   <div style="display: flex; align-items: center; gap: 12px;">
     <a href="/" title="Trang chủ" style="display: flex; align-items: center; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">
@@ -209,9 +218,24 @@
   <img id="lightboxImg" class="lightbox-content" alt="Enlarged Bill">
 </div>
 
+<div id="deleteRoomModal" class="lightbox-modal hidden" style="align-items: center; justify-content: center;">
+  <div class="card" style="width: 90%; max-width: 400px; background: var(--card-bg); padding: 24px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.3); border-radius: 12px; margin: auto;">
+    <h3 style="margin-top: 0; color: var(--danger);" data-i18n="deleteRoomConfirmTitle">Confirm Deletion</h3>
+    <p data-i18n="deleteRoomConfirm" style="color: var(--text);">Are you sure you want to delete this room? It can be restored within 7 days.</p>
+    <div style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
+      <button id="cancelDeleteRoomBtn" type="button" class="secondary-btn" style="flex: 1;" data-i18n="cancelEditBtn">Cancel</button>
+      <button id="confirmDeleteRoomBtn" type="button" style="flex: 1; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;" data-i18n="deleteRoomBtn">Delete Room</button>
+    </div>
+  </div>
+</div>
+
+<section class="card" style="margin-top: 20px; text-align: center; background: transparent; border: none; box-shadow: none;">
+  <button id="deleteRoomBtn" type="button" style="background: none; border: 1px solid var(--danger); color: var(--danger); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;" data-i18n="deleteRoomBtn">Delete Room</button>
+</section>
+
 <button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
 
-<script src="{{ url_for('static', filename='room.js') + '?v=12' }}"></script>
+<script src="{{ url_for('static', filename='room.js') + '?v=15' }}"></script>
 <script src="{{ url_for('static', filename='feedback.js') }}"></script>
 </body>
 </html>

@@ -2,6 +2,8 @@ import os
 import re
 import secrets
 import uuid
+from datetime import datetime, timezone
+import uuid
 
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 from PIL import Image, ImageOps
@@ -99,11 +101,32 @@ def api_feedback():
 @app.get("/<room_slug>")
 def room_page(room_slug):
     if not _valid_slug(room_slug):
-        return "Invalid room name (letters, numbers, - and _ only). / TÃªn phÃ²ng khÃ´ng há»£p lá» (chá» chá»¯, sá», - vÃ  _).", 400
+        return "Invalid room name (letters, numbers, - and _ only). / TÃªn phÃ²ng khÃ´ng há»£p lá»‡ (chá»‰ chá»¯, sá»‘, - vÃ  _).", 400
     room = db.get_or_create_room(room_slug)
+    
+    is_deleted = False
+    days_left = 7
+    if room.get("deleted_at"):
+        # Format returned from SQLite CURRENT_TIMESTAMP is usually 'YYYY-MM-DD HH:MM:SS'
+        try:
+            # Python 3.7+ can parse this with fromisoformat if we replace space with T
+            del_time = datetime.fromisoformat(room["deleted_at"].replace(" ", "T")).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            passed = (now - del_time).days
+            days_left = 7 - passed
+            if days_left < 0:
+                # 7 days passed, permanently delete
+                db.delete_room_permanently(room["id"])
+                # Since it's deleted, redirect to homepage or show 404
+                return "Room permanently deleted.", 404
+            is_deleted = True
+        except Exception as e:
+            pass
+            
     if not _has_access(room):
         return render_template("room_locked.html", room_slug=room_slug)
-    return render_template("room.html", room_slug=room_slug)
+        
+    return render_template("room.html", room_slug=room_slug, is_deleted=is_deleted, days_left=days_left)
 
 
 def _room_or_404(room_slug):
@@ -446,6 +469,25 @@ def api_settle(room_slug):
     return jsonify(_build_state(room))
 
 
+@app.post("/<room_slug>/api/delete-room")
+def api_delete_room(room_slug):
+    room = _room_or_404(room_slug)
+    if not room or not _has_access(room):
+        return jsonify({"error": "NOT_FOUND_OR_LOCKED"}), 403
+
+    db.set_room_deleted(room["id"])
+    return jsonify({"ok": True})
+
+
+@app.post("/<room_slug>/api/restore-room")
+def api_restore_room(room_slug):
+    room = _room_or_404(room_slug)
+    if not room or not _has_access(room):
+        return jsonify({"error": "NOT_FOUND_OR_LOCKED"}), 403
+
+    db.restore_room(room["id"])
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
-

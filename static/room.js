@@ -144,12 +144,7 @@ function renderPaidBySelect() {
   if (filterSel) {
     const prevFilter = filterSel.value;
     filterSel.innerHTML = `<option value="">${t("filterAllPayer") || "All Payers"}</option>`;
-    state.people.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = p.name;
-      filterSel.appendChild(opt);
-    });
+    // Dynamic population is handled in renderExpenseTable, so we only reset the "All" option here or keep it simple.
     if (prevFilter) filterSel.value = prevFilter;
   }
 }
@@ -270,17 +265,61 @@ function renderExpenseTable() {
 
   let sortedExpenses = [...state.expenses];
 
-  // Apply filters
+  // Dynamically update filter options based on state.expenses
   const filterCatEl = document.getElementById("filterCategory");
   const filterPaidByEl = document.getElementById("filterPaidBy");
+  
+  if (filterCatEl && filterPaidByEl) {
+    const prevCat = filterCatEl.value;
+    const prevPaidBy = filterPaidByEl.value;
+    
+    // Normalize category to map legacy "other" to "general"
+    const getCat = (e) => (e.category === "other" || !e.category) ? "general" : e.category;
+
+    // Get unique categories and payers
+    const usedCats = new Set(state.expenses.map(getCat));
+    const usedPayers = new Set(state.expenses.map(e => String(e.paid_by)));
+    
+    // Update Category Filter
+    filterCatEl.innerHTML = `<option value="">${t("filterAllCat") || "All Categories"}</option>`;
+    const expCat = document.getElementById("expCategory");
+    if (expCat) {
+      Array.from(expCat.querySelectorAll("option")).forEach(opt => {
+        if (usedCats.has(opt.value)) {
+          filterCatEl.appendChild(opt.cloneNode(true));
+        }
+      });
+    }
+    
+    // Update Paid By Filter
+    filterPaidByEl.innerHTML = `<option value="">${t("filterAllPayer") || "All Payers"}</option>`;
+    state.people.forEach(p => {
+      if (usedPayers.has(String(p.id))) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        filterPaidByEl.appendChild(opt);
+      }
+    });
+    
+    // Restore previous selection if still available
+    if (prevCat && Array.from(filterCatEl.options).some(o => o.value === prevCat)) {
+      filterCatEl.value = prevCat;
+    }
+    if (prevPaidBy && Array.from(filterPaidByEl.options).some(o => o.value === prevPaidBy)) {
+      filterPaidByEl.value = prevPaidBy;
+    }
+  }
+
   const filterCat = filterCatEl ? filterCatEl.value : "";
   const filterPaidBy = filterPaidByEl ? filterPaidByEl.value : "";
+  const getCat = (e) => (e.category === "other" || !e.category) ? "general" : e.category;
   
   if (filterCat) {
-    sortedExpenses = sortedExpenses.filter(e => (e.category || "general") === filterCat);
+    sortedExpenses = sortedExpenses.filter(e => getCat(e) === filterCat);
   }
   if (filterPaidBy) {
-    sortedExpenses = sortedExpenses.filter(e => e.paid_by === filterPaidBy);
+    sortedExpenses = sortedExpenses.filter(e => String(e.paid_by) === filterPaidBy);
   }
 
   if (state.expenseSortColumn) {
@@ -321,11 +360,12 @@ function renderExpenseTable() {
       ? `<img src="${e.image_url}" class="bill-thumb" alt="Bill" onclick="openLightbox('${e.image_url}')">`
       : "-";
 
-    const catIcon = getCategoryIcon(e.category || "general");
+    const catVal = getCat(e);
+    const catIcon = getCategoryIcon(catVal);
     const desc = e.description || t("noDescription");
 
     tr.innerHTML = `
-      <td style="text-align: center; font-size: 1.2rem;" title="${e.category || 'general'}">${catIcon}</td>
+      <td style="text-align: center; font-size: 1.2rem;" title="${catVal}">${catIcon}</td>
       <td>${desc}</td>
       <td>${fmt(e.amount)}</td>
       <td>${nameById[e.paid_by] || "?"}</td>
@@ -1010,13 +1050,7 @@ document.querySelectorAll(".expense-table th.sortable").forEach(th => {
 });
 
 function initFilters() {
-  const expCat = document.getElementById("expCategory");
-  const filterCat = document.getElementById("filterCategory");
-  if (expCat && filterCat && filterCat.options.length <= 1) {
-    Array.from(expCat.children).forEach(child => {
-      filterCat.appendChild(child.cloneNode(true));
-    });
-  }
+  // Filters are now populated dynamically in renderExpenseTable
 }
 document.addEventListener("DOMContentLoaded", initFilters);
 
@@ -1028,4 +1062,54 @@ if (filterCategoryEl) {
 const filterPaidByEl = document.getElementById("filterPaidBy");
 if (filterPaidByEl) {
   filterPaidByEl.addEventListener("change", renderExpenseTable);
+}
+
+const deleteRoomBtn = document.getElementById("deleteRoomBtn");
+const deleteRoomModal = document.getElementById("deleteRoomModal");
+const cancelDeleteRoomBtn = document.getElementById("cancelDeleteRoomBtn");
+const confirmDeleteRoomBtn = document.getElementById("confirmDeleteRoomBtn");
+
+if (deleteRoomBtn && deleteRoomModal) {
+  deleteRoomBtn.addEventListener("click", () => {
+    deleteRoomModal.style.display = "flex"; // Override hidden if necessary, or just remove class
+    deleteRoomModal.classList.remove("hidden");
+  });
+  
+  if (cancelDeleteRoomBtn) {
+    cancelDeleteRoomBtn.addEventListener("click", () => {
+      deleteRoomModal.classList.add("hidden");
+      deleteRoomModal.style.display = "";
+    });
+  }
+  
+  if (confirmDeleteRoomBtn) {
+    confirmDeleteRoomBtn.addEventListener("click", async () => {
+      try {
+        const res = await fetch(`${apiBase}/delete-room`, { method: "POST" });
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          alert("Failed to delete room.");
+        }
+      } catch (err) {
+        alert("Failed to delete room.");
+      }
+    });
+  }
+}
+
+const restoreRoomBtn = document.getElementById("restoreRoomBtn");
+if (restoreRoomBtn) {
+  restoreRoomBtn.addEventListener("click", async () => {
+    try {
+      const res = await fetch(`${apiBase}/restore-room`, { method: "POST" });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        alert("Failed to restore room.");
+      }
+    } catch (err) {
+      alert("Failed to restore room.");
+    }
+  });
 }
