@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
-<meta property="og:image" content="{{ url_for('static', filename='preview_1200x630.jpg') }}">
+<meta property="og:url" content="{{ request.url }}">
+<meta property="og:image" content="{{ url_for('static', filename='preview_1200x630.jpg', _external=True) }}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="{{ url_for('static', filename='preview_1200x630.jpg') }}">
+<meta name="twitter:image" content="{{ url_for('static', filename='preview_1200x630.jpg', _external=True) }}">
 <meta name="robots" content="noindex, nofollow">
 <title>{{ room_slug }} - Splitbill</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
