@@ -9,9 +9,9 @@
 <meta name="twitter:image" content="{{ url_for('static', filename='preview_1200x630.jpg') }}">
 <meta name="robots" content="noindex, nofollow">
 <title>{{ room_slug }} - Splitbill</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') + '?v=7' }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') + '?v=9' }}">
 <script src="{{ url_for('static', filename='theme.js') }}"></script>
-<script src="{{ url_for('static', filename='i18n.js') + '?v=7' }}"></script>
+<script src="{{ url_for('static', filename='i18n.js') + '?v=9' }}"></script>
 </head>
 <body data-room="{{ room_slug }}">
 <header class="room-header">
@@ -59,11 +59,54 @@
       <label><span data-i18n="descLabel">Description</span> <input id="expDesc" type="text" data-i18n-placeholder="descPlaceholder" placeholder="Dinner, gas, ..."></label>
       <label><span data-i18n="lblCategory">Category</span>
         <select id="expCategory">
-          <option value="other" data-i18n="catOther">📦 Other</option>
-          <option value="food" data-i18n="catFood">🍔 Food</option>
-          <option value="transport" data-i18n="catTransport">🚗 Transport</option>
-          <option value="lodging" data-i18n="catLodging">🏨 Lodging</option>
-          <option value="entertainment" data-i18n="catEnt">🍿 Entertainment</option>
+          <option value="general" data-i18n="catGeneral">📦 General</option>
+          <optgroup label="Entertainment" data-i18n-label="grpEnt">
+            <option value="ent_games" data-i18n="catEntGames">🎲 Games</option>
+            <option value="ent_movies" data-i18n="catEntMovies">🍿 Movies</option>
+            <option value="ent_music" data-i18n="catEntMusic">🎵 Music</option>
+            <option value="ent_sports" data-i18n="catEntSports">⚽ Sports</option>
+            <option value="ent_other" data-i18n="catEntOther">🎭 Other</option>
+          </optgroup>
+          <optgroup label="Food and drink" data-i18n-label="grpFood">
+            <option value="food_dining" data-i18n="catFoodDining">🍽️ Dining out</option>
+            <option value="food_groceries" data-i18n="catFoodGroceries">🛒 Groceries</option>
+            <option value="food_liquor" data-i18n="catFoodLiquor">🍷 Liquor</option>
+            <option value="food_other" data-i18n="catFoodOther">🍔 Other</option>
+          </optgroup>
+          <optgroup label="Home" data-i18n-label="grpHome">
+            <option value="home_supplies" data-i18n="catHomeSupplies">🧻 Household supplies</option>
+            <option value="home_maintenance" data-i18n="catHomeMaintenance">🛠️ Maintenance</option>
+            <option value="home_rent" data-i18n="catHomeRent">🏡 Rent</option>
+            <option value="home_other" data-i18n="catHomeOther">🏠 Other</option>
+          </optgroup>
+          <optgroup label="Life" data-i18n-label="grpLife">
+            <option value="life_childcare" data-i18n="catLifeChildcare">👶 Childcare</option>
+            <option value="life_clothing" data-i18n="catLifeClothing">👕 Clothing</option>
+            <option value="life_education" data-i18n="catLifeEducation">📚 Education</option>
+            <option value="life_gifts" data-i18n="catLifeGifts">🎁 Gifts</option>
+            <option value="life_medical" data-i18n="catLifeMedical">💊 Medical expenses</option>
+            <option value="life_other" data-i18n="catLifeOther">🌟 Other</option>
+          </optgroup>
+          <optgroup label="Transportation" data-i18n-label="grpTrans">
+            <option value="trans_bicycle" data-i18n="catTransBicycle">🚲 Bicycle</option>
+            <option value="trans_bus" data-i18n="catTransBus">🚌 Bus/train</option>
+            <option value="trans_car" data-i18n="catTransCar">🚙 Car</option>
+            <option value="trans_gas" data-i18n="catTransGas">⛽ Gas/fuel</option>
+            <option value="trans_hotel" data-i18n="catTransHotel">🏨 Hotel</option>
+            <option value="trans_parking" data-i18n="catTransParking">🅿️ Parking</option>
+            <option value="trans_plane" data-i18n="catTransPlane">✈️ Plane</option>
+            <option value="trans_taxi" data-i18n="catTransTaxi">🚕 Taxi</option>
+            <option value="trans_other" data-i18n="catTransOther">🚗 Other</option>
+          </optgroup>
+          <optgroup label="Utilities" data-i18n-label="grpUtil">
+            <option value="util_cleaning" data-i18n="catUtilCleaning">🧹 Cleaning</option>
+            <option value="util_electricity" data-i18n="catUtilElectricity">⚡ Electricity</option>
+            <option value="util_heat" data-i18n="catUtilHeat">🔥 Heat/gas</option>
+            <option value="util_trash" data-i18n="catUtilTrash">🗑️ Trash</option>
+            <option value="util_tv" data-i18n="catUtilTv">📺 TV/Phone/Internet</option>
+            <option value="util_water" data-i18n="catUtilWater">💧 Water</option>
+            <option value="util_other" data-i18n="catUtilOther">💡 Other</option>
+          </optgroup>
         </select>
       </label>
       <label><span id="amountLabelText">Amount</span> <input id="expAmount" type="text" inputmode="numeric" placeholder="100 000" required></label>
@@ -157,7 +200,7 @@
 
 <button id="feedbackBtn" type="button" class="feedback-fab" data-i18n="feedbackBtn">Feedback</button>
 
-<script src="{{ url_for('static', filename='room.js') + '?v=7' }}"></script>
+<script src="{{ url_for('static', filename='room.js') + '?v=9' }}"></script>
 <script src="{{ url_for('static', filename='feedback.js') }}"></script>
 </body>
 </html>

@@ -10,10 +10,42 @@ const apiBase = `/${room}/api`;
 
 function getCategoryIcon(cat) {
   switch(cat) {
-    case 'food': return '🍔';
-    case 'transport': return '🚗';
-    case 'lodging': return '🏨';
-    case 'entertainment': return '🍿';
+    case 'general': return '📦';
+    case 'ent_games': return '🎲';
+    case 'ent_movies': return '🍿';
+    case 'ent_music': return '🎵';
+    case 'ent_sports': return '⚽';
+    case 'ent_other': return '🎭';
+    case 'food_dining': return '🍽️';
+    case 'food_groceries': return '🛒';
+    case 'food_liquor': return '🍷';
+    case 'food_other': return '🍔';
+    case 'home_supplies': return '🧻';
+    case 'home_maintenance': return '🛠️';
+    case 'home_rent': return '🏡';
+    case 'home_other': return '🏠';
+    case 'life_childcare': return '👶';
+    case 'life_clothing': return '👕';
+    case 'life_education': return '📚';
+    case 'life_gifts': return '🎁';
+    case 'life_medical': return '💊';
+    case 'life_other': return '🌟';
+    case 'trans_bicycle': return '🚲';
+    case 'trans_bus': return '🚌';
+    case 'trans_car': return '🚙';
+    case 'trans_gas': return '⛽';
+    case 'trans_hotel': return '🏨';
+    case 'trans_parking': return '🅿️';
+    case 'trans_plane': return '✈️';
+    case 'trans_taxi': return '🚕';
+    case 'trans_other': return '🚗';
+    case 'util_cleaning': return '🧹';
+    case 'util_electricity': return '⚡';
+    case 'util_heat': return '🔥';
+    case 'util_trash': return '🗑️';
+    case 'util_tv': return '📺';
+    case 'util_water': return '💧';
+    case 'util_other': return '💡';
     default: return '📦';
   }
 }
@@ -441,7 +473,7 @@ function startEditExpense(expense) {
   document.getElementById("expenseError").textContent = "";
   document.getElementById("expDesc").value = expense.description || "";
   const catEl = document.getElementById("expCategory");
-  if (catEl) catEl.value = expense.category || "other";
+  if (catEl) catEl.value = expense.category || "general";
   const formattedAmt = currentCurrency() === "VND" ? Math.round(expense.amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") : expense.amount;
   document.getElementById("expAmount").value = formattedAmt;
   document.getElementById("expPaidBy").value = expense.paid_by;
@@ -688,7 +720,7 @@ if (expenseForm) {
     }
 
     const categoryEl = document.getElementById("expCategory");
-    const category = categoryEl ? categoryEl.value : "other";
+    const category = categoryEl ? categoryEl.value : "general";
 
     const url = editingExpenseId ? `${apiBase}/expenses/${editingExpenseId}` : `${apiBase}/expenses`;
     const method = editingExpenseId ? "PUT" : "POST";

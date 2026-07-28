@@ -25,11 +25,42 @@ STRINGS = {
         "noDescription": "(no description)",
         "noParticipation": "hasn't joined any expense yet",
         "shareUnit": "share(s)",
-        "catFood": "[Food] ",
-        "catTransport": "[Transport] ",
-        "catLodging": "[Lodging] ",
-        "catEnt": "[Entertainment] ",
-        "catOther": "",
+        "catGeneral": "[General] ",
+        "catEntGames": "[Games] ",
+        "catEntMovies": "[Movies] ",
+        "catEntMusic": "[Music] ",
+        "catEntSports": "[Sports] ",
+        "catEntOther": "[Ent.] ",
+        "catFoodDining": "[Dining] ",
+        "catFoodGroceries": "[Groceries] ",
+        "catFoodLiquor": "[Liquor] ",
+        "catFoodOther": "[Food] ",
+        "catHomeSupplies": "[Supplies] ",
+        "catHomeMaintenance": "[Maintenance] ",
+        "catHomeRent": "[Rent] ",
+        "catHomeOther": "[Home] ",
+        "catLifeChildcare": "[Childcare] ",
+        "catLifeClothing": "[Clothing] ",
+        "catLifeEducation": "[Education] ",
+        "catLifeGifts": "[Gifts] ",
+        "catLifeMedical": "[Medical] ",
+        "catLifeOther": "[Life] ",
+        "catTransBicycle": "[Bicycle] ",
+        "catTransBus": "[Bus] ",
+        "catTransCar": "[Car] ",
+        "catTransGas": "[Gas] ",
+        "catTransHotel": "[Hotel] ",
+        "catTransParking": "[Parking] ",
+        "catTransPlane": "[Plane] ",
+        "catTransTaxi": "[Taxi] ",
+        "catTransOther": "[Transport] ",
+        "catUtilCleaning": "[Cleaning] ",
+        "catUtilElectricity": "[Electricity] ",
+        "catUtilHeat": "[Heat] ",
+        "catUtilTrash": "[Trash] ",
+        "catUtilTv": "[TV/Internet] ",
+        "catUtilWater": "[Water] ",
+        "catUtilOther": "[Utility] ",
     },
     "vi": {
         "appTitle": "Splitbill",
@@ -49,11 +80,42 @@ STRINGS = {
         "noDescription": "(không mô tả)",
         "noParticipation": "chưa tham gia chi tiêu nào",
         "shareUnit": "phần",
-        "catFood": "[Ăn uống] ",
-        "catTransport": "[Di chuyển] ",
-        "catLodging": "[Khách sạn] ",
-        "catEnt": "[Giải trí] ",
-        "catOther": "",
+        "catGeneral": "[Chung] ",
+        "catEntGames": "[Trò chơi] ",
+        "catEntMovies": "[Phim ảnh] ",
+        "catEntMusic": "[Âm nhạc] ",
+        "catEntSports": "[Thể thao] ",
+        "catEntOther": "[Giải trí] ",
+        "catFoodDining": "[Ăn ngoài] ",
+        "catFoodGroceries": "[Đi chợ] ",
+        "catFoodLiquor": "[Rượu bia] ",
+        "catFoodOther": "[Ăn uống] ",
+        "catHomeSupplies": "[Gia dụng] ",
+        "catHomeMaintenance": "[Sửa chữa] ",
+        "catHomeRent": "[Thuê nhà] ",
+        "catHomeOther": "[Nhà cửa] ",
+        "catLifeChildcare": "[Trẻ em] ",
+        "catLifeClothing": "[Quần áo] ",
+        "catLifeEducation": "[Giáo dục] ",
+        "catLifeGifts": "[Quà tặng] ",
+        "catLifeMedical": "[Y tế] ",
+        "catLifeOther": "[Đời sống] ",
+        "catTransBicycle": "[Xe đạp] ",
+        "catTransBus": "[Xe buýt/Tàu] ",
+        "catTransCar": "[Ô tô] ",
+        "catTransGas": "[Đổ xăng] ",
+        "catTransHotel": "[Khách sạn] ",
+        "catTransParking": "[Gửi xe] ",
+        "catTransPlane": "[Máy bay] ",
+        "catTransTaxi": "[Taxi] ",
+        "catTransOther": "[Di chuyển] ",
+        "catUtilCleaning": "[Dọn dẹp] ",
+        "catUtilElectricity": "[Tiền điện] ",
+        "catUtilHeat": "[Tiền gas] ",
+        "catUtilTrash": "[Rác thải] ",
+        "catUtilTv": "[TV/Internet] ",
+        "catUtilWater": "[Tiền nước] ",
+        "catUtilOther": "[Tiện ích] ",
     },
 }
 
@@ -153,11 +215,46 @@ def build_summary_pdf(room_slug, state, lang="en", currency="VND"):
             
             payer = name_by_id.get(e["paid_by"], "?")
             cat_val = e.get("category", "other")
-            cat_str = ""
-            if cat_val == "food": cat_str = s.get("catFood", "")
-            elif cat_val == "transport": cat_str = s.get("catTransport", "")
-            elif cat_val == "lodging": cat_str = s.get("catLodging", "")
-            elif cat_val == "entertainment": cat_str = s.get("catEnt", "")
+            cat_key = "catGeneral"
+            if cat_val == "general": cat_key = "catGeneral"
+            elif cat_val == "ent_games": cat_key = "catEntGames"
+            elif cat_val == "ent_movies": cat_key = "catEntMovies"
+            elif cat_val == "ent_music": cat_key = "catEntMusic"
+            elif cat_val == "ent_sports": cat_key = "catEntSports"
+            elif cat_val == "ent_other": cat_key = "catEntOther"
+            elif cat_val == "food_dining": cat_key = "catFoodDining"
+            elif cat_val == "food_groceries": cat_key = "catFoodGroceries"
+            elif cat_val == "food_liquor": cat_key = "catFoodLiquor"
+            elif cat_val == "food_other": cat_key = "catFoodOther"
+            elif cat_val == "home_supplies": cat_key = "catHomeSupplies"
+            elif cat_val == "home_maintenance": cat_key = "catHomeMaintenance"
+            elif cat_val == "home_rent": cat_key = "catHomeRent"
+            elif cat_val == "home_other": cat_key = "catHomeOther"
+            elif cat_val == "life_childcare": cat_key = "catLifeChildcare"
+            elif cat_val == "life_clothing": cat_key = "catLifeClothing"
+            elif cat_val == "life_education": cat_key = "catLifeEducation"
+            elif cat_val == "life_gifts": cat_key = "catLifeGifts"
+            elif cat_val == "life_medical": cat_key = "catLifeMedical"
+            elif cat_val == "life_other": cat_key = "catLifeOther"
+            elif cat_val == "trans_bicycle": cat_key = "catTransBicycle"
+            elif cat_val == "trans_bus": cat_key = "catTransBus"
+            elif cat_val == "trans_car": cat_key = "catTransCar"
+            elif cat_val == "trans_gas": cat_key = "catTransGas"
+            elif cat_val == "trans_hotel": cat_key = "catTransHotel"
+            elif cat_val == "trans_parking": cat_key = "catTransParking"
+            elif cat_val == "trans_plane": cat_key = "catTransPlane"
+            elif cat_val == "trans_taxi": cat_key = "catTransTaxi"
+            elif cat_val == "trans_other": cat_key = "catTransOther"
+            elif cat_val == "util_cleaning": cat_key = "catUtilCleaning"
+            elif cat_val == "util_electricity": cat_key = "catUtilElectricity"
+            elif cat_val == "util_heat": cat_key = "catUtilHeat"
+            elif cat_val == "util_trash": cat_key = "catUtilTrash"
+            elif cat_val == "util_tv": cat_key = "catUtilTv"
+            elif cat_val == "util_water": cat_key = "catUtilWater"
+            elif cat_val == "util_other": cat_key = "catUtilOther"
+            elif cat_val == "other": cat_key = "catGeneral"
+            
+            cat_str = s.get(cat_key, "")
             
             desc = e["description"] or s["noDescription"]
             desc_text = f"{cat_str}{desc}"
